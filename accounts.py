@@ -208,7 +208,7 @@ def user_for_api_token(tok):
 # ---------------- email (SMTP) ----------------
 SMTP_ENV = {k: os.environ.get(k, "") for k in
             ("SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM", "SMTP_TLS")}
-# gmail app password sering ke-paste masih ada spasinya ("nwtt yldw xvlv xxxx")
+# gmail app password sering ke-paste masih ada spasinya ("xxxx xxxx xxxx xxxx")
 # -> server nolak 535. strip spasi otomatis biar gak ada drama.
 SMTP_ENV["SMTP_PASS"] = SMTP_ENV["SMTP_PASS"].replace(" ", "").replace("\t", "")
 # nama pengirim yang tampil di inbox penerima (default: restartion).
@@ -222,8 +222,8 @@ def smtp_configured():
 
 def from_header():
     """return (header_from, envelope_from).
-    header  -> 'restartion <osnailcyargta@gmail.com>' (nama tampil di inbox)
-    envelope-> 'osnailcyargta@gmail.com' (HARUS alamat telanjang buat MAIL FROM;
+    header  -> 'restartion <boss@example.com>' (nama tampil di inbox)
+    envelope-> 'boss@example.com' (HARUS alamat telanjang buat MAIL FROM;
                kalo kena display name gmail langsung nolak 555)."""
     bare = parseaddr(SMTP_ENV["SMTP_FROM"])[1] or SMTP_ENV["SMTP_FROM"].strip()
     return formataddr((SMTP_FROM_NAME, bare)), bare
