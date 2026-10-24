@@ -1,7 +1,8 @@
 """
 RESTARTION chat — CLI. Dark metal, zero mercy.
   python -m restartion.chat            (or python chat.py)
-commands: /mem /img <file> /reset /stats /quit
+commands: /mem /reset /stats /quit
+BOSS SPEC v2: user gak bisa kirim gambar — restartion yang punya galeri.
 """
 import json
 import os
@@ -26,7 +27,7 @@ BANNER = r"""
 def main():
     print(f"{CLR['red']}{BANNER}{CLR['end']}")
     print(f"{CLR['dim']} restartion · transformer asli · 57.44M params · dilatih dari nol · 4k ctx{CLR['end']}")
-    print(f"{CLR['dim']} commands: /mem /img <file> /reset /stats /quit{CLR['end']}\n")
+    print(f"{CLR['dim']} commands: /mem /reset /stats /quit{CLR['end']}\n")
 
     weights = None
     if len(sys.argv) > 1:
@@ -37,7 +38,7 @@ def main():
     convo_id = f"cli_{time.strftime('%Y%m%d_%H%M%S')}"
     os.makedirs(os.path.join(MEM_DIR, "sessions"), exist_ok=True)
     sess_path = os.path.join(MEM_DIR, "sessions", f"{convo_id}.jsonl")
-    history, images = [], {}
+    history = []
 
     def save(role, text):
         with open(sess_path, "a") as f:
@@ -64,7 +65,7 @@ def main():
             print(f"{CLR['dim']}{json.dumps(eng.mem.d['facts'], indent=2)}{CLR['end']}")
             continue
         if line == "/reset":
-            history, images = [], {}
+            history = []
             eng.convo_turns = 0
             print(f"{CLR['dim']}convo wiped. memory file kept (REAL memory).{CLR['end']}")
             continue
@@ -72,20 +73,12 @@ def main():
             print(f"{CLR['dim']}weights={eng.weights_path} step={eng.step} turns={eng.convo_turns} facts={len(eng.mem.d['facts'])}{CLR['end']}")
             continue
         if line.startswith("/img"):
-            fname = line.split(maxsplit=1)[1].strip()
-            p = os.path.join(ASSETS, fname)
-            if os.path.exists(p):
-                images[fname] = p
-                eng.mem.register_image(convo_id, fname)
-                print(f"{CLR['dim']}[attached {fname} to this convo]{CLR['end']}")
-                line = f"look at this <img>{fname}</img>"
-            else:
-                print(f"{CLR['dim']}no such asset in assets/. available: {os.listdir(ASSETS)}{CLR['end']}")
-                continue
+            print(f"{CLR['dim']}nope banh. user gak bisa kirim gambar — galeri itu MILIK gue 😌 (gue yang kirim kalau konteks masuk akal){CLR['end']}")
+            continue
 
         save("user", line)
         history.append(("user", line))
-        reply = eng.reply(line, history, convo_id=convo_id, images=images)
+        reply = eng.reply(line, history, convo_id=convo_id)
         history.append(("bot", reply))
         save("bot", reply)
         print(f"{CLR['red']}restartion ▸{CLR['end']} {reply}")

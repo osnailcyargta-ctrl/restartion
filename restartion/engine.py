@@ -38,6 +38,23 @@ IMG_TAG = re.compile(r"<img>([^<]+)</img>")
 USER_TAG = re.compile(r"<user>|<eos>")
 BOT_TAG = re.compile(r"<bot>")
 
+# ---------- the AI's own photo gallery (boss spec v2) ----------
+# GUE (restartion) yang punya kamera. user GAK BISA ngirim apa-apa — user cuma bisa
+# ngomong. KALAU konteksnya masuk akal, GUE yang mikir dan kirim foto yang nyambung.
+#   videoframe_20260629_220129.jpg -> frame film. ada di semua konvo, TAPI gak bakal
+#                                    muncul di konvo/message yang udah punya gambar lain.
+#   download.jpeg                  -> si ijo. keluar cuma pas gue beneran marah.
+GALLERY = ("videoframe_20260629_220129.jpg",)
+ANGER_IMG = "download.jpeg"
+# konteks yang bikin foto film-frame "nyambung" buat dikirim si ai
+VIDEO_HINT = re.compile(r"\b(movie|film|nonton|cinema|bioskop|frame|scene|drakor|"
+                        r"series|episode|netflix|trailer|videoframe|hwachua|anime|"
+                        r"kw|mov|ending|plot|spoiler|reels|shorts)\b", re.I)
+# user minta ai ngirim pic (user sendiri gak bisa ngsend)
+ASK_PIC = re.compile(r"\b(send|kirim|show)\b[^.?!\n]{0,40}\b(pic|img|image|photo|foto|"
+                     r"gambar|selfie|videoframe)s?\b|\b(pic|foto|gambar|selfie)s?\b[^^.?!\n]{0,24}"
+                     r"\b(dong|lah|gih|donk|banh|gng|twin)\b", re.I)
+
 
 def ensure_mem_dir():
     os.makedirs(MEM_DIR, exist_ok=True)
@@ -169,12 +186,11 @@ class Engine:
 
     # ---------- main ----------
     def reply(self, user_text, history, convo_id="default", images=None):
-        """images: dict of {fname: path} registered for this conversation."""
-        images = images or {}
+        """user CANNOT send images (boss spec v2) — `images` param kept for compat, ignored.
+        the AI owns the gallery and decides when a pic makes sense."""
+        images = None  # noqa: user uploads are not a thing anymore
         self.mem.extract(user_text)
-        for fname in images:
-            self.mem.register_image(convo_id, fname)
-        convo_imgs = set(images.keys()) | set(self.mem.d["images"].get(convo_id, []))
+        convo_imgs = set(self.mem.d["images"].get(convo_id, []))  # what the AI already sent here
         insult = bool(INSULTS.search(user_text))
         grief = bool(DEATH.search(user_text))
         self.convo_turns += 1
@@ -205,19 +221,40 @@ class Engine:
         text = text.strip()
 
 
-        # deterministic resend guarantee (boss rule: only THIS convo's images)
-        if re.search(r"send.*(pic|img|image|photo|foto|gambar|it)|kirim.*\b(foto|gambar|lagi)\b", user_text, re.I) and convo_imgs:
-            have = [i for i in IMG_TAG.findall(text) if i in convo_imgs or i == "download.jpeg"]
-            if not have:
-                pick = random.choice(sorted(convo_imgs))
-                text = re.sub(r"<img>[^<]*</img>", "", text).strip()
-                text = f"{text} <img>{pick}</img>".strip()
-
         # surface cleanup
         text = re.sub(r"</?(mem|bot)>|\n+", lambda m: "\n" if m.group(0) == "\n" else " ", text).strip()
 
-        # enforce the image rule on whatever the model dreamed up
-        text = self.filter_images(text, convo_imgs)
+        # ---- the AI THINKS: kirim foto kalau konteksnya masuk akal (boss spec v2) ----
+        # rule: videoframe boleh di semua konvo, TAPI gak boleh nongol di konvo yang
+        # udah punya gambar lain (hulk). download.jpeg = marah, selalu boleh.
+        other_img_in_convo = any(i != ANGER_IMG for i in convo_imgs)
+        if (VIDEO_HINT.search(user_text) or ASK_PIC.search(user_text)) and not grief \
+                and not other_img_in_convo and GALLERY[0] not in convo_imgs \
+                and "<img>" not in text:
+            text = f"{text} <img>{GALLERY[0]}</img>".strip()
+
+        # enforce the image rule on whatever the model dreamed up:
+        # keep only gallery names; at most ONE image per reply
+        def _keep(m):
+            name = m.group(1)
+            if name == ANGER_IMG:
+                return m.group(0)
+            if name in GALLERY and not other_img_in_convo:
+                return m.group(0)
+            return ""
+        text = IMG_TAG.sub(_keep, text)
+        seen_img = False
+        def _one(m):
+            nonlocal seen_img
+            if seen_img:
+                return ""
+            seen_img = True
+            return m.group(0)
+        text = IMG_TAG.sub(_one, text)
+
+        # register what the AI actually sent (convo scoping memory)
+        for name in IMG_TAG.findall(text):
+            self.mem.register_image(convo_id, name)
 
         # persona guarantees (deterministic fallbacks, the model is trained for these too)
         sent_imgs = IMG_TAG.findall(text)

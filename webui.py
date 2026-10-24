@@ -1,17 +1,17 @@
 """
 RESTARTION web — dark metal chat UI. run: python webui.py  (port 7860)
+BOSS SPEC v2: user GAK BISA kirim gambar. restartion yang punya galeri dan
+ngirim foto sendiri kalau konteksnya masuk akal.
 """
-import os
 import re
 import uuid
-import time
-from flask import Flask, request, jsonify, render_template, send_from_directory
+from flask import Flask, request, jsonify, render_template, send_from_directory, abort
 
-from restartion.engine import Engine, ASSETS
+from restartion.engine import Engine, ASSETS, GALLERY, ANGER_IMG
 
 app = Flask(__name__)
 ENG = None
-SESSIONS = {}  # sid -> {"history": [(role, text)], "images": {fname: path}, "turns": int}
+SESSIONS = {}  # sid -> {"history": [(role, text)], "turns": int}
 
 def eng():
     global ENG
@@ -25,31 +25,22 @@ def index():
 
 @app.route("/img/<path:fname>")
 def img(fname):
+    # cuma galeri si ai yang boleh dilayani — user gak punya akses upload apa pun
+    if fname not in GALLERY and fname != ANGER_IMG:
+        abort(404)
     return send_from_directory(ASSETS, fname)
-
-def _save_upload(sid, f):
-    updir = os.path.join(ASSETS, "uploads")
-    os.makedirs(updir, exist_ok=True)
-    fname = f"{sid[:8]}_{f.filename}"
-    fname = re.sub(r"[^A-Za-z0-9_.-]", "_", fname)
-    f.save(os.path.join(updir, fname))
-    return fname
 
 @app.route("/api/send", methods=["POST"])
 def send():
     sid = request.form.get("sid") or request.cookies.get("sid") or str(uuid.uuid4())[:8]
-    s = SESSIONS.setdefault(sid, {"history": [], "images": {}, "turns": 0})
+    s = SESSIONS.setdefault(sid, {"history": [], "turns": 0})
     text = (request.form.get("text") or "").strip()
-    if not text and "image" not in request.files:
-        return jsonify({"error": "empty"}), 400
-    imgs = []
     if "image" in request.files and request.files["image"].filename:
-        fname = _save_upload(sid, request.files["image"])
-        s["images"][fname] = os.path.join(ASSETS, "uploads", fname)
-        imgs.append(fname)
-        text = (text + f" <img>{fname}</img>").strip()
+        return jsonify({"error": "nope. user gak bisa kirim gambar. galeri itu MILIK gue 😌"}), 400
+    if not text:
+        return jsonify({"error": "empty"}), 400
     s["history"].append(("user", text))
-    reply = eng().reply(text, s["history"], convo_id=sid, images=s["images"])
+    reply = eng().reply(text, s["history"], convo_id=sid)
     s["history"].append(("bot", reply))
     s["turns"] += 1
     out_imgs = re.findall(r"<img>([^<]+)</img>", reply)
@@ -62,7 +53,7 @@ def send():
 @app.route("/api/reset", methods=["POST"])
 def reset():
     sid = str(uuid.uuid4())[:8]
-    SESSIONS[sid] = {"history": [], "images": {}, "turns": 0}
+    SESSIONS[sid] = {"history": [], "turns": 0}
     resp = jsonify({"ok": True, "sid": sid})
     resp.set_cookie("sid", sid)
     return resp
