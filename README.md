@@ -11,6 +11,14 @@
  └─ personality: joker, roaster, unserious, tapi kadang gw perhatiin lu 🥹
 ```
 
+## 🔴 LIVE DEMO — jalan di browser lu
+**https://osnailcyargta-ctrl.github.io/restartion/**
+
+model int8 (63MB) ke-download sekali → inferensi 100% di CPU browser lu, gak ada server, gak ada API.
+- `site/` = source code site (BPE byte-level in JS + ONNX Runtime Web + engine port)
+- branch `gh-pages` = isi site lengkap dgn `model/restartion_i8.onnx` (di-export via `scripts/export_onnx.py`, parity check greedy 12/12 token identik dgn torch)
+- deploy ulang: `bash scripts/deploy_pages.sh`
+
 ## fitur yang *beneran ada* (bukan janji)
 
 | fitur | status | cara |
