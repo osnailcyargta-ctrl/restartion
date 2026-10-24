@@ -20,7 +20,17 @@ git rm -rf --cached . > /dev/null 2>&1 || true
 find . -mindepth 1 -maxdepth 1 ! -name '.git' ! -name '.github_token' ! -name '.github_token.path' -exec rm -rf {} +
 cp -r /tmp/ghpages/. .
 git add -A
+# GUARD 1 (insiden 2x!): orphan branch GAK PUNYA .gitignore -> git add -A nyeret .github_token.
+# Keluarin dari index SEBELUM commit, lalu hard-abort kalau masih ada sisa.
+git rm --cached --ignore-unmatch -q .github_token .github_token.path 2>/dev/null || true
+if git diff --cached --name-only | grep -q '^\.github_token'; then
+  echo "FATAL: .github_token masih di index — ABORT, push dilarang"; exit 1
+fi
 git commit -q -m "restartion on github.io — 57.44M param from-scratch transformer running 100% client-side (ONNX int8 63MB + ByteLevel BPE in JS + real memory via localStorage + AI-owned gallery). no server. no API. no wrapper."
+# GUARD 2: commit udah jadi — cek lagi, kalau token nyangkut: abort (push protection bakal nolak, tapi jangan sampe nyoba)
+if git show --stat HEAD | grep -q '\.github_token'; then
+  echo "FATAL: .github_token masuk commit — ABORT"; exit 1
+fi
 git push -q "https://${LOGIN}:${TOKEN}@github.com/${LOGIN}/restartion.git" gh-pages --force
 echo "gh-pages pushed"
 
@@ -29,7 +39,7 @@ git checkout main -q
 git clean -fdx -e .github_token -e .github_token.path > /dev/null 2>&1 || true
 git status --short | head -5 || true
 mkdir -p site
-cp -r /tmp/ghpages site/
+cp -r /tmp/ghpages/. site/   # '/.' = copy ISI, bukan bikin site/ghpages/ nested (bug lama)
 echo "main restored + site/ kept"
 
 # --- 4. enable Pages (source: gh-pages / root) ---
