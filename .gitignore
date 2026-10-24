@@ -1,0 +1,12 @@
+# runtime / secrets
+.github_token
+.github_token.path
+__pycache__/
+*.pyc
+memory.json
+*.mem.json
+chat_log*
+.venv/
+
+# duplikat aset (byte-identical dengan videoframe_20260629_220129.jpg)
+assets/Videoframe_20260629_220129_com.huawei.himovie.overseas.jpg
