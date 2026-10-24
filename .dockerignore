@@ -20,6 +20,12 @@ data/train_*.bin
 data/corpus_*.txt
 site/model/
 
+# checkpoint lama — engine resolver selalu ambil part3_i8 (step 3900 = v2),
+# part1/part2 (step 1450/1250) gak pernah ke-load -> 120MB dead weight di image
+weights/restartion_part1_i8.pt
+weights/restartion_part2_i8.pt
+weights/part1.out
+
 # gak dibutuhkan di image runtime
 scripts/
 docs/
