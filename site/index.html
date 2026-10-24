@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>restartion — transformer asli, jalan di browser lu</title>
-<meta name="description" content="57.44M parameter transformer, dilatih dari nol, inferensi 100% di browser (ONNX int8). roasting, memori asli, galeri foto sendiri.">
+<meta name="description" content="58.75M parameter transformer, dilatih dari nol, inferensi 100% di browser (ONNX int8). roasting, memori asli, galeri foto + gif sendiri.">
 <link rel="stylesheet" href="style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔩</text></svg>">
 </head>
@@ -15,10 +15,11 @@
       <div class="logo-mark">⟁</div>
       <div>
         <h1>RESTART<span>ION</span></h1>
-        <p class="sub">transformer asli · 57.44M params · dari nol · 4k ctx · inferensi di browser (onnx int8 63MB)</p>
+        <p class="sub">transformer asli · 58.75M params · dari nol · 8k ctx · 16 heads · inferensi di browser (onnx int8 63MB)</p>
       </div>
     </div>
     <div class="top-actions">
+      <span id="deep-chip" class="chip secret" hidden>🧪 deepthink on</span>
       <span id="mem-chip" class="chip" title="fakta yang diinget restartion (localStorage)">🧠 mem: 0</span>
       <button id="btn-reset" class="btn ghost">restart sesi</button>
     </div>
@@ -39,8 +40,21 @@
       <input type="text" id="text" placeholder="ngomong ke restartion... (twin, gng, stfu — semua boleh)" autocomplete="off" disabled>
       <button type="submit" id="btn-send" class="btn primary" disabled>kirim ▸</button>
     </form>
-    <p class="hint">100% client-side — model jalan di CPU lu, gak ada server, gak ada API · gambar itu ranah gue: kalau konteks masuk akal GUE yang kirim · marah = si ijo · kabar duka = dance to pay respect</p>
+    <p class="hint">100% client-side — model jalan di CPU lu, gak ada server, gak ada API · gambar & gif itu ranah gue: tiap reply ada media · marah = si ijo + keys keys keys · kabar duka = dance to pay respect</p>
   </footer>
+</div>
+
+<div id="deep-pop" hidden>
+  <div class="deep-card">
+    <div class="deep-head">🧪 deepthink mode — experimental</div>
+    <p>deepthink bikin model bikin <b>5 kandidat jawaban</b> lalu pilih yang paling bagus
+    (rerank pakai heuristic + model confidence beneran). mikir lebih lama, hasil lebih nendang. ASLI — bukan animasi palsu.</p>
+    <p class="deep-status" id="deep-status">status: OFF — mode normal (1 kandidat).</p>
+    <div class="deep-actions">
+      <button id="deep-toggle" class="btn primary">nyalain deepthink</button>
+      <button id="deep-close" class="btn ghost">tutup</button>
+    </div>
+  </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.min.js"></script>
 <script src="app.js"></script>

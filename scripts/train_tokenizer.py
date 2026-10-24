@@ -1,8 +1,9 @@
-"""Train a BPE tokenizer FROM SCRATCH on the restartion corpus (vocab 8192)."""
+"""Train a BPE tokenizer FROM SCRATCH on the restartion corpus (vocab 16384, +<gif> tag)."""
 import os
 from tokenizers import Tokenizer, models, trainers, pre_tokenizers, decoders, processors
 
-SPECIALS = ["<pad>", "<bos>", "<eos>", "<user>", "<bot>", "<mem>", "</mem>", "<img>", "</img>"]
+SPECIALS = ["<pad>", "<bos>", "<eos>", "<user>", "<bot>", "<mem>", "</mem>", "<img>", "</img>",
+            "<gif>", "</gif>"]
 
 def main():
     root = "/home/z/my-project/restartion"
@@ -10,7 +11,7 @@ def main():
     tok.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False, use_regex=True)
     tok.decoder = decoders.ByteLevel()
     trainer = trainers.BpeTrainer(
-        vocab_size=8192 - len(SPECIALS),
+        vocab_size=16384 - len(SPECIALS),
         special_tokens=SPECIALS,
         initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
         show_progress=False,

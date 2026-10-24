@@ -19,14 +19,20 @@ from restartion.model import Restartion, RestartionConfig
 ROOT = "/home/z/my-project/restartion"
 ROW = 256
 
-def get_data(part):
-    """part can be '1' or '1,2' or '1,2,3' (mixed = rehearsal so the bot never forgets)."""
+def get_data(part, row=ROW):
+    """part can be '1' or '1,2' or '1,2,3' (mixed = rehearsal so the bot never forgets).
+    special name 'long' = train_long.bin (row 512, ctx positions)."""
     import numpy as np
-    chunks = []
-    for p in str(part).split(","):
-        path = os.path.join(ROOT, "data", f"train_part{p.strip()}.bin")
-        chunks.append(np.fromfile(path, dtype=np.uint16).reshape(-1, ROW))
-    arr = np.concatenate(chunks, axis=0)
+    if str(part) == "long":
+        path = os.path.join(ROOT, "data", "train_long.bin")
+        flat = np.fromfile(path, dtype=np.uint16)
+        arr = flat[: (len(flat) // row) * row].reshape(-1, row)
+    else:
+        chunks = []
+        for p in str(part).split(","):
+            path = os.path.join(ROOT, "data", f"train_part{p.strip()}.bin")
+            chunks.append(np.fromfile(path, dtype=np.uint16).reshape(-1, row))
+        arr = np.concatenate(chunks, axis=0)
     x = torch.from_numpy(arr.astype(np.int64))
     return TensorDataset(x[:, :-1], x[:, 1:])
 
@@ -37,8 +43,9 @@ def main():
     ap.add_argument("--lr", type=float, default=8e-4)
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--tag", type=str, default=None)
-    ap.add_argument("--part", type=str, default="1")  # accepts "1" or "1,2"
+    ap.add_argument("--part", type=str, default="1")  # accepts "1" or "1,2" or "long"
     ap.add_argument("--init-from", type=str, default=None)
+    ap.add_argument("--row", type=int, default=ROW)
     args = ap.parse_args()
     init_from = args.init_from
 
@@ -46,8 +53,9 @@ def main():
     torch.set_num_threads(2)
     dev = "cpu"
 
-    cfg = RestartionConfig(vocab_size=8192, block_size=4096, n_layer=10,
-                           n_head=10, n_embd=640, ffn_mult=2.7, dropout=0.0)
+    # restartion v2: vocab 6144 (5792 real tokens), ctx 8192, 16 heads — RAM <= 750MB runtime
+    cfg = RestartionConfig(vocab_size=6144, block_size=8192, n_layer=10,
+                           n_head=16, n_embd=640, ffn_mult=2.7, dropout=0.0)
     model = Restartion(cfg).to(dev)
     nparam = sum(p.numel() for p in model.parameters())
     print(f"restartion-small: {nparam/1e6:.2f}M params | ctx {cfg.block_size} | layers {cfg.n_layer} | d {cfg.n_embd}")
@@ -71,7 +79,7 @@ def main():
         start_step = sd.get("step", 0)
         print(f"resumed from {ckpt} @ step {start_step}")
 
-    ds = get_data(args.part)
+    ds = get_data(args.part, args.row)
     dl = DataLoader(ds, batch_size=args.batch, shuffle=True, drop_last=True)
     it = iter(dl)
 
@@ -112,7 +120,7 @@ def main():
             print(msg, flush=True)
             log.write(msg + "\n")
             log.flush()
-        if (step + 1) % 100 == 0 or (step + 1) == start_step + total:
+        if (step + 1) % 50 == 0 or (step + 1) == start_step + total:
             torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "step": step + 1, "cfg": vars(cfg) if hasattr(cfg, "__dict__") else cfg.__dict__}, ckpt)
     torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "step": start_step + total, "cfg": cfg.__dict__}, ckpt)
     print(f"saved {ckpt} @ step {start_step+total} | final avg loss {sum(losses[-30:])/30:.3f}")

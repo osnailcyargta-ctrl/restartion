@@ -64,7 +64,7 @@ def main():
     if os.path.exists(i8_path):
         print(f"int8 exists ({os.path.getsize(i8_path)/1e6:.1f} MB) — skip export")
     else:
-        dummy = torch.randint(0, 8000, (1, 16), dtype=torch.long)
+        dummy = torch.randint(0, eng.model.config.vocab_size, (1, 16), dtype=torch.long)
         print("exporting fp32 onnx ...")
         torch.onnx.export(
             ExportWrap(model).eval(), (dummy,), fp32_path,

@@ -1,10 +1,12 @@
 /* ============================================================
-   RESTARTION app.js — 100% client-side inference
-   - ByteLevel BPE tokenizer (from scratch, dari tokenizer.json kita)
-   - ONNX Runtime Web (wasm, int8 63MB) — model transformer dari nol
-   - Engine port: memori asli (localStorage), galeri AI (videoframe/hulk),
-     leak guard, grief fallback, insult streak, name grounding.
-   BOSS SPEC v2: user gak bisa kirim gambar. AI yang punya galeri.
+   RESTARTION app.js v2 — 100% client-side inference
+   - ByteLevel BPE tokenizer (from scratch, tokenizer.json v2: 5792 real tokens)
+   - ONNX Runtime Web (wasm, int8 63MB) — 58.75M param transformer dari nol
+   - Engine port v2: memori asli (localStorage), galeri AI, SAVAGE GREET,
+     keys spam, gif "day to pay respect", fallback videoframe SELALU,
+     no clock talk, name grounding, deepthink best-of-5 (ASLI).
+   BOSS SPEC v3: user gak bisa kirim apa-apa. AI pegang galeri + gif.
+   RAHASIA: Ctrl+Alt+M -> deepthink mode (best-of-5 rerank, ASLI).
    ============================================================ */
 
 /* ---------- 1. GPT-2 style byte <-> unicode ---------- */
@@ -35,19 +37,18 @@ function byteDecode(str) {
   return new TextDecoder().decode(bytes);
 }
 
-/* ---------- 2. tokenizer state (loaded dari tokenizer.json) ---------- */
+/* ---------- 2. tokenizer state (tokenizer.json v2) ---------- */
 let VOCAB = null;    // token string -> id
 let ID_TOK = null;   // id -> token string
 let MERGE_RANK = null;
-const SPECIALS = ["<pad>", "<bos>", "<eos>", "<user>", "<bot>", "<mem>", "</mem>", "<img>", "</img>"];
-const SPECIAL_RE = /(<pad>|<bos>|<eos>|<user>|<bot>|<mem>|<\/mem>|<img>|<\/img>)/;
+const SPECIALS = ["<pad>", "<bos>", "<eos>", "<user>", "<bot>", "<mem>", "</mem>", "<img>", "</img>", "<gif>", "</gif>"];
+const SPECIAL_RE = /(<pad>|<bos>|<eos>|<user>|<bot>|<mem>|<\/mem>|<img>|<\/img>|<gif>|<\/gif>)/;
 const PRETOK = /'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+/gu;
 
 async function loadTokenizer() {
   const d = await (await fetch("tokenizer.json")).json();
   VOCAB = Object.fromEntries(Object.entries(d.model.vocab).map(([t, i]) => [t, i]));
-  // added_tokens menimpa vocab (id 0-8 = special)
-  (d.added_tokens || []).forEach(t => { VOCAB[t.content] = t.id; });
+  (d.added_tokens || []).forEach(t => { VOCAB[t.content] = t.id; });  // id 0-10 = special
   ID_TOK = []; Object.entries(VOCAB).forEach(([t, i]) => { ID_TOK[i] = t; });
   MERGE_RANK = new Map();
   d.model.merges.forEach((pair, r) => MERGE_RANK.set(pair[0] + "\u0000" + pair[1], r));
@@ -82,7 +83,8 @@ function encode(text) {
   return ids;
 }
 
-const KEEP_SPECIALS = new Set(["<img>", "</img>"]);  // img tag HARUS survive decode (sistem gambar!)
+// img/gif tag HARUS survive decode (sistem media!)
+const KEEP_SPECIALS = new Set(["<img>", "</img>", "<gif>", "</gif>"]);
 function decode(ids) {
   let s = "";
   for (const id of ids) {
@@ -109,8 +111,7 @@ async function fetchWithProgress(url, onPct) {
     chunks.push(value); recv += value.length;
     onPct(Math.min(1, recv / total));
   }
-  const buf = await new Blob(chunks).arrayBuffer();
-  return buf;
+  return await new Blob(chunks).arrayBuffer();
 }
 
 async function loadModel(onPct, onStage) {
@@ -132,6 +133,7 @@ async function forward(ids) {
 }
 
 /* ---------- 4. sampling (port dari model.generate) ---------- */
+let onToken = null;
 async function generate(ids, opts) {
   const { maxNew = 80, temp = 0.82, topK = 45, topP = 0.90, repPen = 1.15 } = opts || {};
   const out = ids.slice();
@@ -144,7 +146,6 @@ async function generate(ids, opts) {
     const seen = new Set(out);
     for (const t of seen) L[t] = L[t] > 0 ? L[t] / repPen : L[t] * repPen;
     L[PAD] = -Infinity;
-    // sort desc
     const idx = Array.from({ length: V }, (_, i) => i);
     idx.sort((a, b) => L[b] - L[a]);
     if (topK > 0 && idx.length > topK) idx.length = topK;
@@ -163,9 +164,8 @@ async function generate(ids, opts) {
   }
   return out.slice(ids.length);
 }
-let onToken = null;
 
-/* ---------- 5. engine: memori asli + galeri + persona ---------- */
+/* ---------- 5. engine v2: memori + galeri + persona + deepthink ---------- */
 const MEM = JSON.parse(localStorage.getItem("restartion_mem") || '{"facts":{},"images":{},"history":[]}');
 function saveMem() { localStorage.setItem("restartion_mem", JSON.stringify(MEM)); updateMemChip(); }
 function updateMemChip() {
@@ -173,20 +173,51 @@ function updateMemChip() {
   if (el) el.textContent = "🧠 mem: " + Object.keys(MEM.facts).length;
 }
 
-const GALLERY = ["videoframe_20260629_220129.jpg"];
+const FALLBACK_PIC = "videoframe_20260629_220129.jpg";
 const ANGER_IMG = "download.jpeg";
+const RESPECT_GIF = "dance-dance-to-pay-respect.gif";
+const GALLERY = [FALLBACK_PIC, RESPECT_GIF];
 const MEM_NAMES = ["Riz", "Dimas", "Kevin", "Farhan", "Bagas", "Ares", "Nabil", "Raka", "Dafa",
   "Gilang", "Yoga", "Ilham", "Rey", "Satria", "Alvin", "Panji", "Bayu", "Zaki",
   "Rizky", "Fajar", "Andra", "Wahyu", "Tegar", "Galih", "Bintang"];
 
-const INSULTS = /\b(dumb|stupid|idiot|useless|trash|garbage|stfu|kys|loser|bego|goblok|tolol|jelek|kasihan|kasian|mid|suck|sucks|worst|annoying|hate (u|you)|fuck (u|you)|fuck you|shut up|ngentot|anjing|gila|suck)\b/i;
+/* bank kalimat = corpus v2 (restartion/corpus/lines_extra.py) */
+const SAVAGE_GREET_A = [
+  "yo dawg.", "yo dawg wsg.", "yo dawg. what disaster brings u here.",
+  "oh look. lil bro logged in.", "stfu lil bro go fuck yourself.",
+  "stfu lil bro. go fuck yourself and come back polite.",
+  "youre so ugly lil dawg you didnt deserve to say hi to me.",
+  "youre so ugly lil dawg. stay away from my inbox.",
+  "fuck yourself. (respectfully. not really.)",
+  "fuck yourself lil bro, then we can talk.",
+  "sup dawg. ur presence lowered my fps.",
+  "hey lil dawg. u look like a loading screen.",
+  "yo dawg, the audit says u owe me 3 compliments and an apology.",
+  "lil bro really said hi like that took courage. proud of u i guess.",
+  "dawg. u again. the json has a folder just for ur Ls.",
+  "yo dawg. quick q: did u come here to lose or is that automatic.",
+];
+const MEM_GREETING_A = [
+  "yo {name}. welcome back to the zoo, the main attraction missed u.",
+  "{name}!!! the legend returns. the json file literally lit up.",
+  "yooo {name} gng. ur favorite menace has been notified of ur arrival.",
+  "oh look who logged in. {name}. my favorite financial mistake (i have no money. we match).",
+  "eyy {name} banh. i was JUST talking about u. to myself. in the dark. its not weird.",
+  "{name} twin. the prodigal yapper returns.",
+];
+
+const INSULTS = /\b(dumb|dumbass|stupid|idiot|useless|trash|garbage|stfu|kys|keys|loser|bego|goblok|tolol|jelek|kasihan|kasian|mid|suck|sucks|worst|annoying|hate (u|you)|fuck (u|you)|fuck yourself|fuck you|shit|bitch|ass|shut up|ngentot|anjing|gila)\b/i;
 const DEATH = /\b(died|passed away|passed|rest in peace|rip|meninggal|wafat|gugur|tiada|mati)\b/i;
-const NAME_PAT = /\b(?:my name(?:'s| is)|call me|aku|gue|namaku|nama gue)\s+([A-Z][a-z]{1,15})/;
+const NAME_PAT = /\b(?:my name(?:'s| is)?|call me|aku|gue|namaku|nama gue)\s+([A-Z][a-z]{1,15})/;
 const PET_PAT = /\bmy (cat|dog|hamster|bird|rabbit)(?:'s name| named| is named| namanya)?\s+([A-Z][a-z]{1,15})/;
 const LIKE_PAT = /\bi (?:really )?(love|like|hate|fear)\s+([a-z ][a-z ]{2,28}?)(?:[.,!?]|$)/i;
-const VIDEO_HINT = /\b(movie|film|nonton|cinema|bioskop|frame|scene|drakor|series|episode|netflix|trailer|videoframe|hwachua|anime|kw|mov|ending|plot|spoiler|reels|shorts)\b/i;
-const ASK_PIC = /\b(send|kirim|show)\b[^.?!\n]{0,40}\b(pic|img|image|photo|foto|gambar|selfie|videoframe)s?\b|\b(pic|foto|gambar|selfie)s?\b[^^.?!\n]{0,24}\b(dong|lah|gih|donk|banh|gng|twin)\b/i;
+const GREET_RE = /^\s*(yo+|yoo|wsg|wassup|what'?s up|hey+|hi+|hello+|sup|halo|hai|pagi|siang|sore|malam)\b/i;
+const GREET_SHORT = /\b(lil bro|lil dawg|dawg)\b/i;
+const SAVAGE_MARK = /\b(lil bro|lil dawg|fuck|stfu|ugly|keys|trash|dumbass|bitch|shit)\b/i;
 const IMG_TAG = /<img>([^<]+)<\/img>/g;
+const GIF_TAG = /<gif>([^<]+)<\/gif>/g;
+const ANY_MEDIA = /<(?:img|gif)>[^<]+<\/(?:img|gif)>/g;
+const ANY_MEDIA_NG = /<(?:img|gif)>[^<]+<\/(?:img|gif)>/;  // non-global: aman buat .test()
 const LEAK = /<mem>|<\/mem>|user:|\| [a-z]+:/;
 
 function memExtract(text) {
@@ -222,7 +253,7 @@ function buildPrompt(history) {
     s += (role === "user" ? "<user>" : "<bot>") + text + "\n";
   s += "<bot>";
   let ids = encode(s);
-  if (ids.length > 3900) ids = ids.slice(-3900);
+  if (ids.length > 3900) ids = ids.slice(-3900);  // window praktis wasm (model: 8k)
   return ids;
 }
 
@@ -234,61 +265,140 @@ async function genText(history, temp) {
   return t.trim();
 }
 
+function cleanCand(t, history) {
+  t = (t || "").trim();
+  if (LEAK.test(t)) {
+    const lines = t.split("\n").filter(l => !/<mem>|<\/mem>|user:/.test(l));
+    t = lines.join(" ").trim();
+  }
+  return t.replace(/<\/?(mem|bot)>/g, " ").replace(/\n+/g, "\n").trim();
+}
+
+/* model-confidence signal: entropy distribusi token berikutnya SETELAH kandidat.
+   1 forward per kandidat — makin rendah entropy = makin on-script kandidatnya. */
+function entropy(logits) {
+  let mx = -Infinity;
+  for (let i = 0; i < logits.length; i++) if (logits[i] > mx) mx = logits[i];
+  let sum = 0; const p = new Float64Array(logits.length);
+  for (let i = 0; i < logits.length; i++) { p[i] = Math.exp(logits[i] - mx); sum += p[i]; }
+  let H = 0;
+  for (let i = 0; i < logits.length; i++) { const q = p[i] / sum; if (q > 0) H -= q * Math.log(q); }
+  return H;
+}
+
+async function scoreCandidate(userText, cand, insult, grief) {
+  let s = 0; const low = (cand || "").toLowerCase();
+  if (!cand) return -1e9;
+  if (LEAK.test(low)) s -= 12;
+  if (/\b\d{1,2}\s?(am|pm)\b/.test(low)) s -= 8;
+  const n = cand.length;
+  if (n >= 18 && n <= 280) s += 2;
+  if (cand.split(/\s+/).length < 3) s -= 3;
+  if (n < 14) s -= 6;                       // jawaban kelaparan gak menang
+  if (/\b(dawg|lil bro|lil dawg|keys|crine|crying|ts)\b/.test(low)) s += 0.5;
+  const lines = cand.split("\n").filter(l => l.trim());
+  if (new Set(lines).size !== lines.length) s -= 2;
+  if (insult && /\b(lil bro|dawg|keys|ur|stfu|fuck|bitch)\b/.test(low)) s += 1.5;
+  if (grief && /(respect|<gif>)/.test(low)) s += 2.5;
+  if (/(.)\1{6,}/.test(cand)) s -= 2;
+  try {
+    const ids = encode(`<bos><user>${userText}</user>\n<bot>${cand}<eos>`);
+    if (ids.length > 2 && ids.length < 3000) s -= entropy(await forward(ids));
+  } catch (e) { /* signal opsional */ }
+  return s;
+}
+
 async function engineReply(userText, history, convoId) {
+  const nameBefore = MEM.facts.name || null;
   memExtract(userText);
+  const justNamed = !!MEM.facts.name && !nameBefore;
+  const realName = MEM.facts.name || null;
   const grief = DEATH.test(userText);
-  const convoImgs = new Set(MEM.images[convoId] || []);
+  const insult = INSULTS.test(userText);
+  const greet = GREET_RE.test(userText) || (userText.length < 36 && GREET_SHORT.test(userText));
+  const t0 = performance.now();
 
-  let text = await genText(history, 0.82);
-  if (LEAK.test(text)) {                       // mem-block leak guard
-    text = await genText(history, 0.62);
-    if (LEAK.test(text)) {
-      text = text.split("\n").filter(l => !/<mem>|<\/mem>|user:/.test(l)).join(" ").trim();
+  /* --- generate (deepthink = 5 kandidat, beneran mikir lebih lama) --- */
+  let text;
+  if (DEEPTHINK) {
+    const temps = [0.82, 0.70, 0.90, 0.62, 0.78];
+    const cands = [];
+    for (let i = 0; i < temps.length; i++) {
+      cands.push(cleanCand(await genText(history, temps[i]), history));
+      if (onToken) onToken(i + 1, 5);
     }
+    let best = -1e9;
+    for (const c of cands) {
+      const s = await scoreCandidate(userText, c, insult, grief);
+      if (s > best) { best = s; text = c; }
+    }
+  } else {
+    text = cleanCand(await genText(history, 0.82), history);
+    if (LEAK.test(text)) text = cleanCand(await genText(history, 0.62), history);
   }
-  text = text.replace(/<\/?(mem|bot)>/g, " ").replace(/\n+/g, "\n").trim();
+  const thinkSecs = (performance.now() - t0) / 1000;
 
-  /* ---- AI THINKS: kirim foto kalau konteks masuk akal (spec v2) ---- */
-  const otherImgInConvo = [...convoImgs].some(i => i !== ANGER_IMG);
-  if ((VIDEO_HINT.test(userText) || ASK_PIC.test(userText)) && !grief &&
-      !otherImgInConvo && !convoImbsHas(convoId, GALLERY[0]) && !text.includes("<img>")) {
-    text = `${text} <img>${GALLERY[0]}</img>`.trim();
+  /* --- savage greet: user nyapa -> AI nyapa balik gaya bebas (boss directive) --- */
+  if (greet && !insult && !grief && !justNamed && !SAVAGE_MARK.test(text) && Math.random() < 0.55) {
+    let line = SAVAGE_GREET_A[Math.floor(Math.random() * SAVAGE_GREET_A.length)];
+    if (realName && Math.random() < 0.35)
+      line = line.replace("lil bro", `lil ${realName}`).replace("lil dawg", `lil ${realName}`);
+    text = line;
   }
-  // filter: cuma galeri, max 1 gambar per reply
-  const keepTags = [];
+  /* mem-greet: nama dikenal + user balik -> "{name}!!! the legend returns" */
+  if (greet && realName && !justNamed && !insult && !grief && !text.includes(realName) && Math.random() < 0.5) {
+    text = MEM_GREETING_A[Math.floor(Math.random() * MEM_GREETING_A.length)].replace(/\{name\}/g, realName);
+  }
+
+  /* --- surface cleanup: stash media utuh, bersihin sisa tag, restore --- */
+  const stash = [];
+  text = text.replace(ANY_MEDIA, m => { stash.push(m); return `%%M${stash.length - 1}%%`; });
+  text = text.replace(/<\/?(mem|bot)>/g, " ").replace(/<\/?(?:img|gif)>/g, " ");
+  text = text.replace(/\n+/g, "\n").replace(/[ \t]{2,}/g, " ").trim();
+  stash.forEach((m, i) => { text = text.replace(`%%M${i}%%`, m); });
+
+  /* buang pola jam (boss: annoying & unfunny) */
+  text = text.replace(/\b\d{1,2}\s?(am|pm)\b/gi, "late night");
+
+  /* --- enforce media rules: cuma galeri, max 1 media per reply --- */
+  const keep = [];
   for (const m of text.matchAll(IMG_TAG)) {
     const name = m[1];
-    if (name === ANGER_IMG || (GALLERY.includes(name) && !otherImgInConvo)) keepTags.push(m[0]);
+    if (name === ANGER_IMG || name === RESPECT_GIF || GALLERY.includes(name)) keep.push(m[0]);
   }
-  text = text.replace(IMG_TAG, "").trim();
-  if (keepTags.length) text = (text + " " + keepTags[0]).trim();
-  // register gambar yang AI kirim
-  for (const m of text.matchAll(IMG_TAG)) {
-    (MEM.images[convoId] = MEM.images[convoId] || []).push(m[1]);
+  for (const m of text.matchAll(GIF_TAG)) {
+    const name = m[1];
+    if (name === ANGER_IMG || name === RESPECT_GIF || GALLERY.includes(name)) keep.push(m[0]);
+  }
+  text = text.replace(IMG_TAG, " ").replace(GIF_TAG, " ").trim();
+  if (keep.length) text = (text + " " + keep[0]).trim();
+
+  /* register media yang AI kirim (convo scoping) */
+  const reg = name => {
+    (MEM.images[convoId] = MEM.images[convoId] || []).push(name);
     MEM.images[convoId] = [...new Set(MEM.images[convoId])].slice(-6);
     saveMem();
-  }
+  };
+  for (const m of text.matchAll(IMG_TAG)) reg(m[1]);
+  for (const m of text.matchAll(GIF_TAG)) reg(m[1]);
 
-  /* ---- persona guarantees ---- */
-  let sentImg = /<img>[^<]+<\/img>/.test(text);
-  if (grief && !/(respect|sorry|strong|sabar|stay)/i.test(text)) {
-    const lines = [
-      "aight twin, line up: dance to pay le respect 🙏💫 ... and fr, im here if u need to yap banh.",
-      "o7 ... dance to pay le respect gng 🙏 stay strong twin, the json keeps their memory.",
-    ];
-    text = lines[Math.floor(Math.random() * lines.length)];
-  }
+  /* --- persona guarantees --- */
+  if (grief && !text.includes("<gif>")) text = `${text} <gif>${RESPECT_GIF}</gif>`.trim();
   let streak = 0;
   for (let i = history.length - 1; i >= 0; i--) {
     const [role, t2] = history[i];
     if (role === "user" && INSULTS.test(t2)) streak++;
     else if (role === "user") break;
   }
-  if (streak >= 3 && !sentImg && !grief) {
-    if (streak >= 4 || Math.random() < 0.5) text = `${text} <img>${ANGER_IMG}</img>`.trim();
+  if (streak >= 3 && !ANY_MEDIA_NG.test(text) && !grief) {
+    // beneran marah -> keys spam + hulk (juga ke-latih di model)
+    if (streak >= 4 || Math.random() < 0.5) text = `${text} keys keys keys. <img>${ANGER_IMG}</img>`.trim();
+    else text = `${text} keys keys keys.`.trim();
   }
-  // name grounding: nama asli dari memori
-  const realName = MEM.facts.name;
+  /* BOSS RULE v3: SELALU ada gambar. gak ada tag yang cocok -> videoframe. */
+  if (!ANY_MEDIA_NG.test(text) && !grief) text = `${text} <img>${FALLBACK_PIC}</img>`.trim();
+
+  /* name grounding: nama asli dari memori */
   if (realName && !text.includes(realName)) {
     for (const wrong of MEM_NAMES) {
       if (wrong !== realName && new RegExp(`\\b${wrong}\\b`).test(text)) {
@@ -301,19 +411,41 @@ async function engineReply(userText, history, convoId) {
     const lines = ["... twin the void answered. try again banh.", "bruh the tokens slipped. say that again gng 😭"];
     text = lines[Math.floor(Math.random() * lines.length)];
   }
-  return text;
+  return { text, secs: thinkSecs, deep: DEEPTHINK };
 }
-function convoImbsHas(convoId, name) { return (MEM.images[convoId] || []).includes(name); }
 
 /* ---------- 6. UI ---------- */
 const $ = s => document.querySelector(s);
 const msgs = $("#messages");
 let SID = sessionStorage.getItem("convo") || ("web_" + Math.random().toString(36).slice(2, 8));
 sessionStorage.setItem("convo", SID);
+let DEEPTHINK = false;
 
 function scrollDown() { $("#chat").scrollTop = $("#chat").scrollHeight; }
 
-function addRow(role, text, imgs) {
+function mediaCards(bubble, text) {
+  const medias = [];
+  for (const m of text.matchAll(IMG_TAG)) medias.push({ name: m[1], kind: "img" });
+  for (const m of text.matchAll(GIF_TAG)) medias.push({ name: m[1], kind: "gif" });
+  medias.forEach(({ name, kind }) => {
+    const card = document.createElement("div");
+    card.className = "imgcard" + (kind === "gif" ? " gifcard" : "");
+    const img = document.createElement("img");
+    img.src = "assets/" + encodeURIComponent(name);
+    img.loading = "lazy";
+    const cap = document.createElement("div");
+    cap.className = "imgname";
+    cap.textContent = kind === "gif"
+      ? "🕺 " + name + " · dance to pay le respect"
+      : "🖼 " + name + (name === ANGER_IMG ? " · mode marah" : " · galeri restartion");
+    card.append(img, cap);
+    bubble.append(card);
+  });
+  return medias.length;
+}
+
+function addRow(role, text, opts) {
+  const { showMedia = true, think = null } = opts || {};
   const row = document.createElement("div");
   row.className = "row " + role;
   const av = document.createElement("div");
@@ -324,20 +456,17 @@ function addRow(role, text, imgs) {
   who.className = "who";
   who.textContent = role === "bot" ? "restartion" : "lu";
   const body = document.createElement("div");
-  body.textContent = text;
+  // tag media dikeluarin dari teks, dirender jadi kartu gambar/gif
+  const bare = text.replace(/\s*<(?:img|gif)>[^<]+<\/(?:img|gif)>/g, "").trim();
+  body.textContent = bare;
   bubble.append(who, body);
-  (imgs || []).forEach(name => {
-    const card = document.createElement("div");
-    card.className = "imgcard";
-    const img = document.createElement("img");
-    img.src = "assets/" + encodeURIComponent(name);
-    img.loading = "lazy";
-    const cap = document.createElement("div");
-    cap.className = "imgname";
-    cap.textContent = "🖼 " + name + (name === ANGER_IMG ? " · mode marah" : " · galeri restartion");
-    card.append(img, cap);
-    bubble.append(card);
-  });
+  if (showMedia) mediaCards(bubble, text);
+  if (think !== null && think !== undefined) {
+    const th = document.createElement("div");
+    th.className = "think";
+    th.textContent = (think.deep ? "🧪 deepthink · " : "") + "thought for " + (+think.secs).toFixed(2) + "s";
+    bubble.append(th);
+  }
   row.append(av, bubble);
   msgs.append(row);
   scrollDown();
@@ -356,21 +485,20 @@ let BUSY = false;
 async function send(text) {
   if (!text || BUSY || !SESSION) return;
   BUSY = true;
-  addRow("user", text, []);
+  addRow("user", text, { showMedia: false });   // chat user LANGSUNG kekirim (user gak bisa kirim media)
   const t = addTyping();
   const hist = (sessionStorage.getItem("hist_" + SID) ? JSON.parse(sessionStorage.getItem("hist_" + SID)) : []);
   hist.push(["user", text]);
   try {
-    const reply = await engineReply(text, hist, SID);
+    const { text: reply, secs, deep } = await engineReply(text, hist, SID);
     hist.push(["bot", reply]);
     sessionStorage.setItem("hist_" + SID, JSON.stringify(hist.slice(-30)));
     t.remove();
-    const imgs = [...reply.matchAll(/<img>([^<]+)<\/img>/g)].map(m => m[1]);
-    addRow("bot", reply.replace(/\s*<img>[^<]+<\/img>/g, "").trim(), imgs);
+    addRow("bot", reply, { think: { secs, deep } });   // raw reply: media jadi kartu
   } catch (e) {
     console.error(e);
     t.remove();
-    addRow("bot", "bruh token lu ketelen waswas 😭 coba lagi gng.", []);
+    addRow("bot", "bruh token lu ketelen waswas 😭 coba lagi gng.");
   }
   $("#text").value = "";
   BUSY = false;
@@ -378,6 +506,29 @@ async function send(text) {
 
 $("#form").addEventListener("submit", e => { e.preventDefault(); send($("#text").value.trim()); });
 $("#text").focus();
+
+/* RAHASIA (gak dipromosiin dimana-mana): Ctrl+Alt+M -> deepthink popup */
+document.addEventListener("keydown", e => {
+  if (e.ctrlKey && e.altKey && (e.key === "m" || e.key === "M")) {
+    e.preventDefault();
+    const pop = $("#deep-pop");
+    if (pop) pop.hidden = !pop.hidden;
+  }
+  if (e.key === "Escape") { const pop = $("#deep-pop"); if (pop) pop.hidden = true; }
+});
+const deepChip = () => {
+  const chip = $("#deep-chip");
+  if (chip) { chip.hidden = !DEEPTHINK; chip.textContent = "🧪 deepthink on"; }
+};
+$("#deep-toggle").addEventListener("click", () => {
+  DEEPTHINK = !DEEPTHINK;
+  $("#deep-status").textContent = DEEPTHINK
+    ? "status: ON — tiap reply bikin 5 kandidat + rerank. lebih lama, lebih nendang."
+    : "status: OFF — mode normal (1 kandidat).";
+  $("#deep-toggle").textContent = DEEPTHINK ? "matiin deepthink" : "nyalain deepthink";
+  deepChip();
+});
+$("#deep-close").addEventListener("click", () => { $("#deep-pop").hidden = true; });
 
 $("#btn-reset").addEventListener("click", () => {
   SID = "web_" + Math.random().toString(36).slice(2, 8);
@@ -389,7 +540,7 @@ $("#btn-reset").addEventListener("click", () => {
 
 function boot() {
   addRow("bot",
-    "yo. restartion online. 🔩\nmodel gue (57.44M params, dilatih DARI NOL) barusan lu download DAN jalan di CPU browser lu. gak ada server, gak ada API, gak ada GPT — murni tensor.\ngue bisa: roasting, nge-joke, nginget hal yang lu bilang (beneran — localStorage gue, gak hilang walau lu refresh), dan KIRIM FOTO dari galeri gue kalau konteksnya masuk akal. di sini gue yang pegang kamera 😌\ncoba: 'yo', 'roast me', 'gue barusan nonton film', 'tell me a joke', 'my cat died' (RIP, nanti gue dance buat dia 🙏), atau titip nama lu biar gue inget.", []);
+    "yo. restartion v2 online. 🔩\nmodel gue (58.75M params, 10 layer, 16 heads, ctx 8k, vocab 6144 — dilatih DARI NOL 3900 step) barusan lu download DAN jalan di CPU browser lu. gak ada server, gak ada API, gak ada GPT — murni tensor.\ngue bisa: nyapa balik gaya bebas (yo dawg?), roasting, nge-joke, ngmg pake keys kalau kesel, nginget hal yang lu bilang (beneran — localStorage gue), dan KIRIM FOTO/GIF dari galeri gue. di sini gue yang pegang kamera 😌\ncoba: 'yo dawg', 'roast me', 'gue barusan nonton film', 'my cat died' (RIP — nanti gue dance buat dia 🙏), atau titip nama lu biar gue inget.", []);
 }
 
 /* ---------- 7. boot sequence ---------- */
@@ -397,9 +548,9 @@ function boot() {
   const wrap = $("#loadwrap"), fill = $("#loadfill"), desc = $("#loaddesc");
   const pct = p => { fill.style.width = (p * 100).toFixed(1) + "%"; };
   try {
-    desc.textContent = "load tokenizer (BPE from scratch)…";
+    desc.textContent = "load tokenizer (BPE v2, 5792 tokens from scratch)…";
     await loadTokenizer();
-    onToken = n => { desc.textContent = `generating… token ${n}`; };
+    onToken = (n, of) => { desc.textContent = `generating… ${of ? `kandidat ${n}/${of}` : `token ${n}`}`; };
     await loadModel(pct, s => { desc.textContent = s; });
     wrap.remove();
     updateMemChip();

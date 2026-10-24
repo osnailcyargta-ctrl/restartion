@@ -3,11 +3,11 @@ RESTARTION MODEL — a real decoder-only transformer, written from scratch.
 No GPT-2 weights, no pretrained anything. Trained from a cold init on the
 restartion slang corpus. This is the actual thing, not a wrapper.
 
-Architecture (restartion-small ~57M params):
-  - decoder-only, causal self-attention, learned positional embeddings (ctx 4096)
+Architecture (restartion v2 ~58.7M params):
+  - decoder-only, causal self-attention, learned positional embeddings (ctx 8192)
   - RMSNorm (pre-norm) + SwiGLU MLP  (llama-style blocks, written by hand)
-  - tied input/output embeddings
-  - BPE tokenizer trained from scratch (vocab 8192) on the restartion corpus
+  - tied input/output embeddings, 16 attention heads
+  - BPE tokenizer trained from scratch (5792 real tokens, model slot 6144) on the restartion corpus v2
 """
 import math
 import torch
@@ -206,8 +206,8 @@ class Restartion(nn.Module):
 
 
 def small_config():
-    """~57M params. Fits the 50M-100M range the boss asked for."""
-    return RestartionConfig(vocab_size=8192, block_size=4096, n_layer=10, n_head=10, n_embd=640, ffn_mult=2.7)
+    """~58.7M params (v2): vocab 6144, ctx 8192, 16 heads. RAM runtime <= 750MB."""
+    return RestartionConfig(vocab_size=6144, block_size=8192, n_layer=10, n_head=16, n_embd=640, ffn_mult=2.7)
 
 
 if __name__ == "__main__":

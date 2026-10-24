@@ -39,3 +39,62 @@
 - kalimat panjang kadang pecah (corpus pendek-pendek). butuh corpus percakapan
   multi-turn lebih panjang kalau mau lebih mulus.
 - chinchilla-real butuh ±1.15B token — di luar budget CPU ini (docs/chinchilla.md).
+
+---
+
+# TRAINING REPORT v2 — upgrade 2026-10-24
+
+## config baru (sesuai directive boss)
+
+| stat | v1 | v2 |
+|---|---|---|
+| params | 57.44M | **58.75M** |
+| context | 4096 | **8192** (dilatih sampai posisi 2048 via corpus long) |
+| attention heads | 10 | **16** (head dim 40) |
+| vocab slot / real | 8192 / 4762 | **6144 / 5792** (slot mengecil = hemat RAM, vocab REAL naik 21%) |
+| special tokens | 9 | **11** (+ `<gif>`, `</gif>`) |
+| layer / d_model | 10 / 640 | 10 / 640 (dipertahankan demi budget RAM) |
+| corpus | 1.79M chars | **3.25M chars** (1.8x) |
+
+Kenapa vocab slot malah turun: slot 8192 versi lama cuma kepake 4762 (sisanya padding
+mati yang makan embedding table). Corpus v2 yang lebih gede ngeluarin 5792 token real
+→ slot 6144 itu pas. Vocab REAL naik, embedding table mengecil, RAM turun. Win-win.
+
+## perilaku baru yang DILATIH (bukan di-hardcode doang)
+
+- savage greeting: "yo dawg" → dijawab gaya bebas ("stfu lil bro go fuck yourself",
+  "youre so ugly lil dawg you didnt deserve to say hi to me", dll) — bank SAVAGE_GREET_A
+- swearing "baik hati dan bergizi": fuck, shit, dumbass, ass, bitch
+- slang: lil bro, dawg, lil dawg, keys, ts, ts frying me, im crine, im crying
+- marah → "keys keys keys" (plesetan kys biar komen gak kena pelanggaran moderasi)
+- tag `<gif>dance-dance-to-pay-respect.gif</gif>` → gif day to pay respect
+- POLA JAM DIHAPUS TOTAL: corpus v2 gak punya satu pun "3am"/"6am" (verified rg).
+
+## kurva loss
+
+- corpus legs (ROW 256, batch 4): 9.12 (cold) → 0.089 avg30 @ step 3670 → 0.076 @ 3880
+- long-context leg (ROW 2048, batch 1): mulai 3.78 (posisi jauh polos) → 0.95 @ 3730
+- mini long refresh (ROW 1024): 1.04 @ 3900 (final checkpoint)
+- total: 3900 step, ~2.9 jam CPU (2 core)
+
+## runtime (TERUKUR, bukan kira-kira)
+
+- python + torch: 220MB
+- engine load int8 (dequant on load): 471MB resident / 558MB peak, load 0.7s
+- generate: +11–15MB → 0.5–1.1s per reply
+- 40 pesan panjang (ctx lebar): 516MB resident, peak TETAP 558MB
+- **KESIMPULAN: 558MB peak ≤ 750MB budget boss ✓ (headroom 190MB)**
+
+## export & parity
+
+- int8: 62.8MB (`weights/restartion_part3_i8.pt`) @ step 3900
+- ONNX: fp32 250.9MB → int8 **63.0MB** (`site/model/restartion_i8.onnx`)
+- parity vs torch: max logit diff 0.41, greedy agreement **12/12 token** ✓
+
+## catatan teknis
+
+- engine resolver sekarang: part3_i8 → part3.pt → part1_i8 (runtime selalu int8)
+- dequant int8 → tied weight (head.weight == tok_emb.weight) di-skip saat copy
+  (named_parameters dedupe) — bug fixed
+- deepthink server: best-of-5 + rerank heuristic + model CE (manual forward full-seq)
+- site engine port: rerank pakai entropy distribusi token berikutnya (1 forward/kandidat)

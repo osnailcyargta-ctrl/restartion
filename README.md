@@ -1,36 +1,45 @@
 # RESTARTION 🔩
 
-> transformer kecil yang dilatih **DARI NOL** buat nge-roast lu. 57.44M parameter. no API, no GPT, no wrapper. murni tensor + kebencian (positif).
+> transformer kecil yang dilatih **DARI NOL** buat nge-roast lu. 58.75M parameter. no API, no GPT, no wrapper. murni tensor + kebencian (positif).
 
 ```
- restartion-small
- ├─ 57.44M params (10 layer, d=640, 10 heads, SwiGLU, RMSNorm)
- ├─ context window: 4096 token (4k, sesuai request)
- ├─ tokenizer: BPE dilatih dari nol di corpus restartion (bukan tiktoken, bukan GPT-2)
- ├─ data: corpus slang buatan tangan + dipaketin 3 bagian (train_part1/2/3.bin)
- └─ personality: joker, roaster, unserious, tapi kadang gw perhatiin lu 🥹
+ restartion v2
+ ├─ 58.75M params (10 layer, d=640, 16 heads, SwiGLU, RMSNorm)
+ ├─ context window: 8192 token (8k) — dilatih sampai posisi 2048
+ ├─ attention heads: 16 (naik dari 10)
+ ├─ tokenizer: BPE dilatih dari nol di corpus v2 (5792 id terpakai dari slot 6144, +<gif>)
+ ├─ data: corpus v2 3.2 juta karakter (1.8x lipat) — savage greet, keys, ts, crine, swearing
+ ├─ runtime RAM: 558MB peak (terukur) — muat di VPS 1GB
+ └─ personality: joker, roaster, unserious, nyapa balik gaya bebas, kesel = keys keys keys
 ```
 
 ## 🔴 LIVE DEMO — jalan di browser lu
 **https://osnailcyargta-ctrl.github.io/restartion/**
 
 model int8 (63MB) ke-download sekali → inferensi 100% di CPU browser lu, gak ada server, gak ada API.
-- `site/` = source code site (BPE byte-level in JS + ONNX Runtime Web + engine port)
-- branch `gh-pages` = isi site lengkap dgn `model/restartion_i8.onnx` (di-export via `scripts/export_onnx.py`, parity check greedy 12/12 token identik dgn torch)
+- `site/` = source code site (BPE byte-level in JS + ONNX Runtime Web + engine port v2)
+- branch `gh-pages` = isi site lengkap dgn `model/restartion_i8.onnx` (export via `scripts/export_onnx.py`, parity check greedy 12/12 token identik dgn torch)
 - deploy ulang: `bash scripts/deploy_pages.sh`
 
-## fitur yang *beneran ada* (bukan janji)
+## fitur v2 (yang *beneran ada*, bukan janji)
 
 | fitur | status | cara |
 |---|---|---|
 | transformer asli dari scratch | ✅ | `restartion/model.py` — causal self-attention + SwiGLU, init random, dilatih dari 0 |
-| BPE dari nol | ✅ | `scripts/train_tokenizer.py` — HF tokenizers BPE, vocab 8192 (4762 kepake), dilatih di corpus sendiri |
-| memori asli | ✅ | `restartion/engine.py` — `memory/memory.json` persistent, ekstraksi fakta otomatis (nama, pet, like/hate), `<mem>` block dimasukin ke context tiap turn, recall lintas sesi |
-| context 4k | ✅ | positional embedding 4096 posisi |
-| kirim gambar yang lu kirim | ✅ | model nge-emit `<img>...</img>`. gambar cuma bisa dikirim ulang DI KONVO tempat dia dikirim — gambar konvo lain gak bakal bocor (di-filter di engine + dilatih di corpus: 371 nama file unik) |
-| `download.jpeg` = mode marah | ✅ | dilatih: user ngiseng 3x → hulk ijo dikirim. engine juga ada fallback deterministik |
-| kabar duka → *dance to pay le respect* | ✅ | dilatih ribuan contoh kondolan dark-humor + fallback regex |
-| slang: twin, gng, stfu, sybau | ✅ | corpus penuh itu, normalize di `scripts/build_corpus.py` |
+| BPE dari nol | ✅ | `scripts/train_tokenizer.py` — vocab slot 6144 (5792 kepake), 5525 merges, special `<gif>` |
+| context 8k | ✅ | positional embedding 8192 posisi; corpus long-context ROW 2048 ke-latih |
+| 16 kepala attention | ✅ | head dim 40, paralel 16 |
+| memori asli | ✅ | `memory/memory.json` persistent + `<mem>` block tiap turn, recall lintas sesi |
+| SAVAGE GREET | ✅ | "yo dawg" → "stfu lil bro go fuck yourself" / "youre so ugly lil dawg you didnt deserve to say hi to me" — dilatih di corpus + injector engine |
+| swearing santuy | ✅ | fuck, shit, dumbass, ass, bitch — masuk corpus (`lines_extra.py`) |
+| slang baru | ✅ | lil bro, dawg, lil dawg, keys, ts, ts frying me, im crine, im crying |
+| keys keys keys | ✅ | marah = spam "keys" (plesetan kys biar lolos moderasi sosmed) + si ijo keluar |
+| gif **day to pay respect** | ✅ | tag baru `<gif>dance-dance-to-pay-respect.gif</gif>` — kabar duka → AI ngesend gif tarian |
+| SELALU ada gambar | ✅ | reply tanpa tag media apapun otomatis dikasih videoframe (boss rule v3) |
+| no clock talk | ✅ | pola "3am"/"6am" dilarang — di corpus DAN di-strip engine |
+| thinking indicator ASLI | ✅ | "thought for 0.89s" = waktu inferensi beneran, bukan animasi |
+| 🧪 deepthink (RAHASIA) | ✅ | **Ctrl+Alt+M** di site → popup tersembunyi → best-of-5 kandidat + rerank (heuristic + model confidence) — mikir 5-20x lebih lama, hasil dipilih, ASLI |
+| user gak bisa kirim apa-apa | ✅ | upload dihapus total; galeri 100% milik AI |
 
 ## jalanin
 
@@ -38,49 +47,35 @@ model int8 (63MB) ke-download sekali → inferensi 100% di CPU browser lu, gak a
 pip install -r requirements.txt
 
 # CLI
-python chat.py                          # atau: python -m restartion.chat
-#   /mem   -> dump isi memori
-#   /img videoframe_20260629_220129.jpg   -> attach gambar ke konvo
-#   /reset /stats /quit
+python chat.py
 
-# WEB (dark metal UI)
-python webui.py                         # buka http://localhost:7860
+# web UI (flask)
+python webui.py  # -> http://localhost:7860
+
+# site (github.io) lokal
+cd site && python -m http.server 8901  # model/ harus ada (export dulu)
 ```
 
 ## struktur
 
 ```
 restartion/
-├── restartion/        # model.py, engine.py, chat.py, corpus/ (sumber corpus)
-├── scripts/           # build_corpus, train_tokenizer, pack_data, train, export_i8
-├── data/              # corpus_part1-3.txt + train_part1-3.bin (dipaketin 3 bagian!)
-├── weights/           # restartion_part1/2/3.pt (fp32, lokalan) + _i8.pt (62.8MB, di github)
-├── assets/            # download.jpeg (hulk/marah) + videoframe_20260629_220129.jpg
-├── templates/ static/ # dark metal web UI
-├── memory/            # memory.json (dibuat saat run pertama) + sessions/
-└── screenshots/       # bukti training + percakapan per bagian
+├─ restartion/          # model + engine + corpus banks
+│  ├─ model.py          # decoder-only transformer (dari nol)
+│  ├─ engine.py         # brain stem: memori, aturan media, persona, deepthink
+│  └─ corpus/           # banks kalimat (lines_core/extra/jokes/roasts/...)
+├─ scripts/             # build_corpus, train_tokenizer, pack_data, train, export_i8, export_onnx
+├─ data/                # corpus + tokenizer.json + train_part*.bin + train_long.bin
+├─ weights/             # restartion_part3_i8.pt (runtime, 62.8MB)
+├─ site/                # github.io (BPE JS + ORT Web + engine port)
+├─ assets/              # galeri AI: videoframe, si ijo, gif respect
+├─ docs/                # training_report, chinchilla
+└─ webui.py / chat.py   # flask UI + CLI
 ```
 
-## training (dari nol, CPU 2 core pun jalan)
+## training v2 (ringkas)
 
-```bash
-python scripts/build_corpus.py              # generate 5200 percakapan, split 3 bagian
-python scripts/train_tokenizer.py           # BPE dari nol
-python scripts/pack_data.py 1 2 3           # tokenisasi -> uint16 bin
-python scripts/train.py --part 1 --steps 250 --tag part1        # bagian 1
-python scripts/train.py --part 1 --steps 250 --tag part1 --resume   # lanjut
-# bagian 2: --part 1,2 (gabung biar gak lupa)  |  bagian 3: --part 1,2,3
-python scripts/export_i8.py part1           # int8 ~60MB, muat di github
-```
-
-## catatan chinchilla (docs/chinchilla.md)
-
-chinchilla optimal = ±20 token per parameter → 57M params idealnya ±1.1B token.
-korpus kita jauh lebih kecil (sengaja: personality bot yang *memorize* gaya ngomongnya,
-bukan enciclopedia) — jadi kita overfit-by-design beberapa epoch di corpus template
-+ fallback deterministik di engine biar personality gak pernah amblas. jujur soal ini,
-bukan AI slop marketing.
-
-## palette
-
-dark metal: `#0a0b0d` bg · `#101318` panel · `#232a35` garis · `#ff4655` molten red · `#8b96a8` steel
+- 3900 step total (cold init, AdamW + warmup + cosine), loss 9.12 → 0.08 (corpus) / 0.86 (long-ctx row 2048)
+- corpus v2: 3.25M chars, ~720k token packed ROW 256 + long ROW 512 (posisi jauh)
+- runtime: 558MB RAM peak, 0.5–1.1s per reply (2 core CPU)
+- detail: `docs/training_report.md`

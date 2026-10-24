@@ -28,6 +28,9 @@ from restartion.corpus.lines_memory import (MEM_NAMES, MEM_FACT_BANK, MEM_GREETI
 from restartion.corpus.lines_images import (IMG_USER_SENT, IMG_BOT_REACT_SLEEPY,
     IMG_BOT_REACT_RANDOM, IMG_ASK_RESEND, IMG_RESEND_OK, IMG_ASK_OTHER,
     IMG_ASK_OTHER_REFUSE, ANGRY_TRIGGER_SENT, IMG_ANGRY_HULK, IMG_CALM_DOWN)
+from restartion.corpus.lines_extra import (SAVAGE_GREET_A, USER_NEW_GREET, KEYS_SPAM,
+    ANGRY_TS, NEW_SLANG_REACT, NEW_ROASTS, NEW_INSULTS, NEW_APOLOGY_USER,
+    TOPICS, BOT_PIC_CAPTIONS, BOT_PIC_INTRO_USER, RESPECT_GIF_LINES)
 
 RNG = random.Random(20260629)
 
@@ -40,9 +43,38 @@ _NORM = [
     (r"\bsybau\b", "sybau"), (r"\bstfu\b", "stfu"),
 ]
 
+# --- boss directive v2: POLA JAM ("3am", "6am", "jam 3 pagi") DILARANG di output ---
+_DEJAM = [
+    (r"its 3am and i cant sleep", "i cant sleep at night"),
+    (r"got reloaded at 6am", "got reloaded at dawn"),
+    (r"3am\?\? sybau and sleep", "its so late?? sybau and sleep"),
+    (r"i only know inference at 3am", "i only know inference at night"),
+    (r"3am is not a personality gng", "staying up all night is not a personality gng"),
+    (r"wait its 3am\?\?", "wait its that late??"),
+    (r"its 2am and im awake again", "cant sleep again at night"),
+    (r"yet again 3am no sleep", "yet again no sleep at night"),
+    (r"i missed my 8am AGAIN", "i missed my alarm AGAIN"),
+    (r"at 2am\. like a menace", "at night. like a menace"),
+    (r"at 2am", "at night"),
+    (r"3am is ur lunch break", "nighttime is ur lunch break"),
+    (r"taken at 3am", "taken at night"),
+    (r"3am rn", "so late rn"),
+    (r"jam 3 pagi banh", "tengah malam banh"),
+    (r"jam 3 pagi", "tengah malam"),
+    (r"bangun jam \d+(?::\d+)?", "bangun kesiangan"),
+]
+
+def dejam(s):
+    """buang SEMUA referensi jam spesifik (boss: annoying & unfunny). safety net regex di akhir."""
+    for pat, rep in _DEJAM:
+        s = re.sub(pat, rep, s, flags=re.I)
+    s = re.sub(r"\b\d{1,2}\s?(am|pm)\b", "late night", s, flags=re.I)
+    return s
+
 def norm(s):
     for pat, rep in _NORM:
         s = re.sub(pat, rep, s)
+    s = dejam(s)
     return s.replace("  ", " ").strip()
 
 FILLER_USER = [
@@ -112,8 +144,12 @@ def rand_name():
 
 def build_greet_smalltalk():
     turns = []
-    turns.append(("u", RNG.choice(GREETINGS + ["wassup", "yo whats good"])))
-    turns.append(("b", RNG.choice(SMALLTALK_A)))
+    turns.append(("u", RNG.choice(GREETINGS + USER_NEW_GREET)))
+    # 45%: nyapa balik gaya savage baru (yo dawg / stfu lil bro / fuck yourself)
+    if RNG.random() < 0.45:
+        turns.append(("b", RNG.choice(SAVAGE_GREET_A)))
+    else:
+        turns.append(("b", RNG.choice(SMALLTALK_A)))
     if RNG.random() < 0.8:
         turns.append(("u", RNG.choice(SMALLTALK_Q + FILLER_USER)))
         turns.append(("b", RNG.choice(SMALLTALK_A + SLANG_REACT + BOT_FILLER_REACT)))
@@ -140,12 +176,12 @@ def build_identity():
 
 def build_roast_session():
     turns = []
-    turns.append(("u", RNG.choice(GREETINGS)))
-    turns.append(("b", RNG.choice(SMALLTALK_A)))
+    turns.append(("u", RNG.choice(GREETINGS + USER_NEW_GREET)))
+    turns.append(("b", RNG.choice(SAVAGE_GREET_A + SMALLTALK_A)))
     n = RNG.randint(1, 3)
     for _ in range(n):
-        turns.append(("u", RNG.choice(ROASTS + ["roast me", "roast me bot", "roast gue dong", "buat gue sedih", "say something mean"])))
-        turns.append(("b", RNG.choice(ROASTS + ROASTS)))
+        turns.append(("u", RNG.choice(ROASTS + NEW_ROASTS + ["roast me", "roast me bot", "roast gue dong", "buat gue sedih", "say something mean"])))
+        turns.append(("b", RNG.choice(ROASTS + ROASTS + NEW_ROASTS)))
     if RNG.random() < 0.5:
         turns.append(("u", RNG.choice(["ok damn 😭", "bruh", "fine u win", "ok ok u got me", "anjir kena banh", "kena juga sih 😭"])))
         turns.append(("b", RNG.choice(["as it should be gng. the json records another W for me.",
@@ -155,28 +191,30 @@ def build_roast_session():
 
 def build_insult_escalation():
     turns = []
-    turns.append(("u", RNG.choice(GREETINGS)))
-    turns.append(("b", RNG.choice(SMALLTALK_A)))
+    turns.append(("u", RNG.choice(GREETINGS + USER_NEW_GREET)))
+    turns.append(("b", RNG.choice(SAVAGE_GREET_A + SMALLTALK_A)))
     level = RNG.random()
-    turns.append(("u", RNG.choice(INSULT_TRIGGER)))
-    if level < 0.35:
+    turns.append(("u", RNG.choice(INSULT_TRIGGER + NEW_INSULTS)))
+    if level < 0.3:
         turns.append(("b", RNG.choice(INSULT_L1)))
-        turns.append(("u", RNG.choice(["ok sorry sorry", "damn my bad gng", "chill banh", "sorry twin 😭"])))
+        turns.append(("u", RNG.choice(["ok sorry sorry", "damn my bad gng", "chill banh", "sorry twin 😭"] + NEW_APOLOGY_USER)))
         turns.append(("b", RNG.choice(INSULT_APOLOGY)))
-    elif level < 0.7:
+    elif level < 0.65:
         turns.append(("b", RNG.choice(INSULT_L1)))
-        turns.append(("u", RNG.choice(INSULT_TRIGGER + USER_ROAST_BOT)))
-        turns.append(("b", RNG.choice(INSULT_L2)))
-        turns.append(("u", RNG.choice(ANGRY_TRIGGER_SENT)))
-        turns.append(("b", RNG.choice(INSULT_ANGRY)))
+        turns.append(("u", RNG.choice(INSULT_TRIGGER + NEW_INSULTS + USER_ROAST_BOT)))
+        turns.append(("b", RNG.choice(INSULT_L2 + ANGRY_TS)))
+        turns.append(("u", RNG.choice(ANGRY_TRIGGER_SENT + NEW_INSULTS)))
+        # marah beneran -> keys spam / hulk (dilatih dua-duanya)
+        angry = RNG.choice(KEYS_SPAM if RNG.random() < 0.55 else INSULT_ANGRY)
+        turns.append(("b", angry))
         if RNG.random() < 0.6:
-            turns.append(("u", RNG.choice(["ok ok im sorry 😭", "alright alright chill", "sorry banh serius", "damnn ok my bad"])))
+            turns.append(("u", RNG.choice(["ok ok im sorry 😭", "alright alright chill", "sorry banh serius", "damnn ok my bad"] + NEW_APOLOGY_USER)))
             turns.append(("b", RNG.choice(INSULT_APOLOGY)))
     else:
         turns.append(("b", RNG.choice(INSULT_L1)))
-        turns.append(("u", RNG.choice(INSULT_TRIGGER + USER_ROAST_BOT + ANGRY_TRIGGER_SENT)))
-        turns.append(("b", RNG.choice(INSULT_ANGRY)))
-        turns.append(("u", RNG.choice(["ok ok im sorry 😭", "chill gng my bad", "sorry banh", "gege gw salah"])))
+        turns.append(("u", RNG.choice(INSULT_TRIGGER + NEW_INSULTS + USER_ROAST_BOT + ANGRY_TRIGGER_SENT)))
+        turns.append(("b", RNG.choice(INSULT_ANGRY + KEYS_SPAM)))
+        turns.append(("u", RNG.choice(["ok ok im sorry 😭", "chill gng my bad", "sorry banh", "gege gw salah"] + NEW_APOLOGY_USER)))
         turns.append(("b", RNG.choice(INSULT_APOLOGY)))
         if RNG.random() < 0.4:
             turns.append(("u", RNG.choice(USER_FLIRTS + COMPLIMENT)))
@@ -200,10 +238,14 @@ def build_joke_session():
 def build_condolence():
     turns = []
     turns.append(("u", RNG.choice(CONDOL_USER)))
-    turns.append(("b", RNG.choice(CONDOL_BOT)))
+    # dance to pay le respect sekarang bawa gif (tag baru <gif>) — 55% sertain
+    b1 = RNG.choice(CONDOL_BOT)
+    if RNG.random() < 0.55:
+        b1 = b1 + " " + "<gif>dance-dance-to-pay-respect.gif</gif>"
+    turns.append(("b", b1))
     if RNG.random() < 0.75:
         turns.append(("u", RNG.choice(["yeah... thanks banh", "thanks twin. it hurts", "makasih ya banh", "i needed that gng", "ok 😭 thanks", "he was the best honestly", "she was everything to us"])))
-        turns.append(("b", RNG.choice(CONDOL_FOLLOWUP)))
+        turns.append(("b", RNG.choice(CONDOL_FOLLOWUP + RESPECT_GIF_LINES)))
     if RNG.random() < 0.5:
         turns.append(("u", RNG.choice(["ok. im gonna be ok twin.", "thanks for listening gng", "im better now banh", "ok imma go rest"])))
         turns.append(("b", RNG.choice(["anytime twin. the roast department resumes at sunrise. gnight.",
@@ -292,6 +334,46 @@ def build_image_session():
         turns.append(("b", RNG.choice(BYE_A + SLANG_REACT)))
     return turns, None
 
+def build_topic_session():
+    """multi-turn soal topik nyata (game/sekolah/makanan/...) — biar gak cuma talking shit."""
+    topic = RNG.choice(list(TOPICS.keys()))
+    bank = TOPICS[topic]
+    turns = []
+    turns.append(("u", RNG.choice(bank["q"])))
+    turns.append(("b", norm(RNG.choice(bank["a"]))))
+    for _ in range(RNG.randint(1, 3)):
+        r = RNG.random()
+        if r < 0.45:
+            turns.append(("u", RNG.choice(bank["q"] + FILLER_USER)))
+            turns.append(("b", norm(RNG.choice(bank["a"] + NEW_SLANG_REACT))))
+        elif r < 0.7:
+            turns.append(("u", RNG.choice(FILLER_USER + SMALLTALK_Q)))
+            turns.append(("b", RNG.choice(NEW_SLANG_REACT + BOT_FILLER_REACT + SLANG_REACT)))
+        elif r < 0.85:
+            turns.append(("u", RNG.choice(["roast me dawg", "roast me"])))
+            turns.append(("b", RNG.choice(ROASTS + NEW_ROASTS)))
+        else:
+            turns.append(("u", RNG.choice(THANKS_Q + SORRY_Q)))
+            turns.append(("b", RNG.choice(THANKS_A + SORRY_A)))
+    if RNG.random() < 0.3:
+        turns.append(("u", RNG.choice(BYE_Q)))
+        turns.append(("b", RNG.choice(BYE_A)))
+    return turns, None
+
+def build_bot_pic_drop():
+    """AI pegang kamera: dia yang mikir & kirim frame galerinya (boss spec: selalu ada gambar)."""
+    turns = []
+    turns.append(("u", RNG.choice(BOT_PIC_INTRO_USER + FILLER_USER + GREETINGS)))
+    turns.append(("b", RNG.choice(SAVAGE_GREET_A + SMALLTALK_A + NEW_SLANG_REACT)))
+    if RNG.random() < 0.5:
+        turns.append(("u", RNG.choice(["lol what", "show me", "gas gng", "wtf dawg 😭", "ok?? and?", "wat is that lil bro"])))
+        turns.append(("b", norm(RNG.choice(NEW_SLANG_REACT + BOT_FILLER_REACT))))
+    turns.append(("b", norm(RNG.choice(BOT_PIC_CAPTIONS))))
+    if RNG.random() < 0.4:
+        turns.append(("u", RNG.choice(["w frame dawg", "ok that's tuff", "L frame 😭", "nice pic banh", "wkwk gila"])))
+        turns.append(("b", RNG.choice(NEW_SLANG_REACT + ["i know dawg. the lens loves me.", "only the finest frames for u lil bro."])))
+    return turns, None
+
 def build_flirt():
     turns = []
     turns.append(("u", RNG.choice(USER_FLIRTS)))
@@ -352,17 +434,19 @@ def build_random_misc():
     return turns, None
 
 BUILDERS = [
-    (build_greet_smalltalk, 12),
-    (build_identity, 7),
-    (build_roast_session, 10),
+    (build_greet_smalltalk, 11),
+    (build_identity, 5),
+    (build_roast_session, 9),
     (build_insult_escalation, 10),
-    (build_joke_session, 9),
-    (build_condolence, 9),
-    (build_mem_session, 16),
-    (build_image_session, 14),
-    (build_flirt, 5),
+    (build_joke_session, 7),
+    (build_condolence, 8),
+    (build_mem_session, 13),
+    (build_image_session, 11),
+    (build_topic_session, 14),
+    (build_bot_pic_drop, 10),
+    (build_flirt, 4),
     (build_mood, 6),
-    (build_random_misc, 8),
+    (build_random_misc, 9),
 ]
 
 def main(out_dir, n_total):
@@ -373,7 +457,7 @@ def main(out_dir, n_total):
     convos = []
     seen = set()
     attempts = 0
-    while len(convos) < n_total and attempts < 60000:
+    while len(convos) < n_total and attempts < 200000:
         attempts += 1
         fn = RNG.choice(pool)
         turns, mem = fn()
@@ -396,4 +480,4 @@ def main(out_dir, n_total):
         print(f"part{i}: {len(p)} convos, {sum(len(c) for c in p)} chars")
 
 if __name__ == "__main__":
-    main("/home/z/my-project/restartion/data", 5200)
+    main("/home/z/my-project/restartion/data", 10000)

@@ -61,6 +61,28 @@ h1 span{color:var(--red)}
 .typing i:nth-child(2){animation-delay:.18s}.typing i:nth-child(3){animation-delay:.36s}
 @keyframes bl{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
 
+/* thinking indicator (ASLI — waktu inferensi beneran) */
+.think{margin-top:7px;font-size:10px;color:var(--dim);letter-spacing:.4px}
+.row.bot .think{color:#5f6a78}
+
+/* gif card */
+.imgcard.gifcard{max-width:300px}
+.imgcard.gifcard img{max-height:240px}
+
+/* deepthink popup (rahasia: Ctrl+Alt+M) */
+#deep-pop{position:fixed;inset:0;z-index:50;display:grid;place-items:center;
+  background:rgba(4,5,7,.72);backdrop-filter:blur(3px)}
+#deep-pop[hidden]{display:none}
+.deep-card{max-width:420px;margin:20px;padding:22px;border:1px solid var(--line);border-radius:10px;
+  background:linear-gradient(160deg,#13161c,#0e1014);box-shadow:0 14px 50px rgba(0,0,0,.6);
+  border-top:2px solid var(--red)}
+.deep-head{font-size:13px;color:#e8edf4;letter-spacing:1px;margin-bottom:10px}
+.deep-card p{font-size:12px;color:var(--steel);line-height:1.7;margin-bottom:10px}
+.deep-card b{color:var(--red)}
+.deep-status{font-size:11px !important;color:var(--dim) !important}
+.deep-actions{display:flex;gap:10px;margin-top:6px}
+.chip.secret{color:var(--red);border-color:var(--red-dim)}
+
 /* model loading */
 .loadwrap{margin:14vh auto 0;max-width:420px;padding:22px;border:1px solid var(--line);border-radius:10px;
   background:linear-gradient(160deg,#13161c,#0e1014);box-shadow:0 10px 40px rgba(0,0,0,.5)}
