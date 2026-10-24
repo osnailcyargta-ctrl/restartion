@@ -1,0 +1,27 @@
+services:
+  restartion:
+    build: .
+    image: restartion:latest
+    container_name: restartion
+    ports:
+      - "4006:4006"          # boss spec: port 4006
+    environment:
+      - PORT=4006
+      - DATA_DIR=/data
+      - TORCH_THREADS=2
+      # SMTP buat kirim recovery code ke email (isi di .env — lihat .env.example)
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - SMTP_TLS=${SMTP_TLS:-starttls}
+    volumes:
+      - ./docker-data:/data  # db akun + memori AI per-akun, survive rebuild
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4006/api/health', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s

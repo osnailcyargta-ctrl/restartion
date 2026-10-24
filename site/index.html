@@ -20,7 +20,11 @@
     </div>
     <div class="top-actions">
       <span id="deep-chip" class="chip secret" hidden>🧪 deepthink on</span>
-      <span id="mem-chip" class="chip" title="fakta yang diinget restartion (localStorage)">🧠 mem: 0</span>
+      <span id="mem-chip" class="chip" title="fakta yang diinget restartion">🧠 mem: 0</span>
+      <span id="account-chip" class="chip acc" hidden>
+        <span id="acc-name">👤 belum login</span>
+        <button id="btn-logout" class="btn ghost mini" hidden>logout</button>
+      </span>
       <button id="btn-reset" class="btn ghost">restart sesi</button>
     </div>
   </header>
@@ -54,6 +58,62 @@
       <button id="deep-toggle" class="btn primary">nyalain deepthink</button>
       <button id="deep-close" class="btn ghost">tutup</button>
     </div>
+  </div>
+</div>
+
+<!-- AKUN RESTARTION (server mode) -->
+<div id="auth-pop" hidden>
+  <div class="deep-card auth-card">
+    <div class="deep-head">⟁ akun restartion</div>
+    <p>satu akun buat semuanya: chat sama restartion, memori AI private per-akun,
+    dan nanti bisa dipake buat <b>login ke web web lain</b>.</p>
+    <div class="auth-tabs">
+      <button type="button" id="tab-login" class="auth-tab on">login</button>
+      <button type="button" id="tab-register" class="auth-tab">daftar</button>
+    </div>
+    <form id="auth-login-form">
+      <input id="li-user" type="text" placeholder="username atau email" autocomplete="username">
+      <input id="li-pass" type="password" placeholder="password" autocomplete="current-password">
+      <div class="deep-actions">
+        <button type="submit" class="btn primary">masuk ▸</button>
+        <button type="button" id="btn-forgot" class="btn ghost">lupa password?</button>
+      </div>
+    </form>
+    <form id="auth-register-form" hidden>
+      <input id="rg-email" type="email" placeholder="email" autocomplete="email">
+      <input id="rg-user" type="text" placeholder="username (3-20 char)" autocomplete="username">
+      <input id="rg-pass" type="password" placeholder="password (min 6 char)" autocomplete="new-password">
+      <div class="deep-actions">
+        <button type="submit" class="btn primary">buat akun ▸</button>
+      </div>
+    </form>
+    <div id="auth-err" class="auth-err"></div>
+  </div>
+</div>
+
+<!-- LUPA PASSWORD: popup 1 (identifier) -> code 10 menit -> popup 2 (code + pass baru) -->
+<div id="fgt-pop" hidden>
+  <div class="deep-card auth-card">
+    <div class="deep-head">🔑 lupa password — recovery</div>
+    <div id="fgt-1">
+      <p>masukin <b>email ATAU username</b> akun lu. recovery code (berlaku <b>10 menit</b>,
+      sekali pakai) bakal dikirim ke email terdaftar.</p>
+      <input id="fgt-id" type="text" placeholder="email atau username">
+      <div class="deep-actions">
+        <button type="button" id="fgt-send" class="btn primary">kirim code ▸</button>
+        <button type="button" id="fgt-back" class="btn ghost">balik</button>
+      </div>
+    </div>
+    <div id="fgt-2" hidden>
+      <p id="fgt-sentinfo">code dikirim. cek inbox.</p>
+      <div id="fgt-devcode" class="devcode"></div>
+      <input id="fgt-code" type="text" placeholder="recovery code (8 digit)" inputmode="numeric">
+      <input id="fgt-new" type="password" placeholder="password baru (min 6 char)" autocomplete="new-password">
+      <div class="deep-actions">
+        <button type="button" id="fgt-reset" class="btn primary">ganti password ▸</button>
+      </div>
+    </div>
+    <div id="fgt-err" class="auth-err"></div>
   </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.min.js"></script>

@@ -1,11 +1,11 @@
 /* ============================================================
-   RESTARTION app.js v2 — 100% client-side inference
-   - ByteLevel BPE tokenizer (from scratch, tokenizer.json v2: 5792 real tokens)
-   - ONNX Runtime Web (wasm, int8 63MB) — 58.75M param transformer dari nol
-   - Engine port v2: memori asli (localStorage), galeri AI, SAVAGE GREET,
-     keys spam, gif "day to pay respect", fallback videoframe SELALU,
-     no clock talk, name grounding, deepthink best-of-5 (ASLI).
-   BOSS SPEC v3: user gak bisa kirim apa-apa. AI pegang galeri + gif.
+   RESTARTION app.js v3 — dual mode
+   SERVER MODE (docker, boss spec v4): akun asli (login/daftar/lupa-pass),
+     chat gated, inferensi di server (torch int8) -> ZERO LAG di browser,
+     memori AI per-akun, thinking panel expandable (klik "thought for Xs").
+   STANDALONE MODE (github.io demo): 100% client-side kayak dulu —
+     BPE in JS + ONNX wasm int8 + engine port + deepthink.
+   BOSS SPEC: user gak bisa kirim apa-apa. AI pegang galeri + gif.
    RAHASIA: Ctrl+Alt+M -> deepthink mode (best-of-5 rerank, ASLI).
    ============================================================ */
 
@@ -318,6 +318,18 @@ async function engineReply(userText, history, convoId) {
   const greet = GREET_RE.test(userText) || (userText.length < 36 && GREET_SHORT.test(userText));
   const t0 = performance.now();
 
+  /* --- thinking trace ASLI (diupdate di tiap keputusan beneran) --- */
+  const steps = [];
+  steps.push(`baca pesan (${userText.length} char)`);
+  const fk = Object.keys(MEM.facts);
+  steps.push("memori: " + (fk.length ? fk.slice(0, 4).map(k => `${k}=${MEM.facts[k]}`).join(", ") : "masih kosong"));
+  if (justNamed) steps.push(`fakta baru: nama=${realName} -> diinget permanen`);
+  const sig = [];
+  if (insult) sig.push("insult");
+  if (grief) sig.push("grief/duka");
+  if (greet) sig.push("greeting");
+  steps.push("sinyal: " + (sig.join(", ") || "netral"));
+
   /* --- generate (deepthink = 5 kandidat, beneran mikir lebih lama) --- */
   let text;
   if (DEEPTHINK) {
@@ -325,15 +337,19 @@ async function engineReply(userText, history, convoId) {
     const cands = [];
     for (let i = 0; i < temps.length; i++) {
       cands.push(cleanCand(await genText(history, temps[i]), history));
+      steps.push(`generate kandidat ${i + 1}/${temps.length} (temp ${temps[i]})`);
       if (onToken) onToken(i + 1, 5);
     }
-    let best = -1e9;
-    for (const c of cands) {
-      const s = await scoreCandidate(userText, c, insult, grief);
-      if (s > best) { best = s; text = c; }
+    let best = -1e9, bestI = 0;
+    for (let i = 0; i < cands.length; i++) {
+      const s = await scoreCandidate(userText, cands[i], insult, grief);
+      steps.push(`skor kandidat ${i + 1}: ${s.toFixed(2)}`);
+      if (s > best) { best = s; text = cands[i]; bestI = i; }
     }
+    steps.push(`deepthink: ${cands.length} kandidat direrank, kandidat ${bestI + 1} menang`);
   } else {
     text = cleanCand(await genText(history, 0.82), history);
+    steps.push("generate kandidat 1/1 (temp 0.82)");
     if (LEAK.test(text)) text = cleanCand(await genText(history, 0.62), history);
   }
   const thinkSecs = (performance.now() - t0) / 1000;
@@ -344,10 +360,12 @@ async function engineReply(userText, history, convoId) {
     if (realName && Math.random() < 0.35)
       line = line.replace("lil bro", `lil ${realName}`).replace("lil dawg", `lil ${realName}`);
     text = line;
+    steps.push("injector: savage greet (nyapa -> nyapa balik gaya bebas)");
   }
   /* mem-greet: nama dikenal + user balik -> "{name}!!! the legend returns" */
   if (greet && realName && !justNamed && !insult && !grief && !text.includes(realName) && Math.random() < 0.5) {
     text = MEM_GREETING_A[Math.floor(Math.random() * MEM_GREETING_A.length)].replace(/\{name\}/g, realName);
+    steps.push(`injector: mem-greet (${realName} balik)`);
   }
 
   /* --- surface cleanup: stash media utuh, bersihin sisa tag, restore --- */
@@ -383,7 +401,7 @@ async function engineReply(userText, history, convoId) {
   for (const m of text.matchAll(GIF_TAG)) reg(m[1]);
 
   /* --- persona guarantees --- */
-  if (grief && !text.includes("<gif>")) text = `${text} <gif>${RESPECT_GIF}</gif>`.trim();
+  if (grief && !text.includes("<gif>")) { text = `${text} <gif>${RESPECT_GIF}</gif>`.trim(); steps.push("media: gif 'dance to pay le respect' (konteks duka)"); }
   let streak = 0;
   for (let i = history.length - 1; i >= 0; i--) {
     const [role, t2] = history[i];
@@ -392,11 +410,11 @@ async function engineReply(userText, history, convoId) {
   }
   if (streak >= 3 && !ANY_MEDIA_NG.test(text) && !grief) {
     // beneran marah -> keys spam + hulk (juga ke-latih di model)
-    if (streak >= 4 || Math.random() < 0.5) text = `${text} keys keys keys. <img>${ANGER_IMG}</img>`.trim();
-    else text = `${text} keys keys keys.`.trim();
+    if (streak >= 4 || Math.random() < 0.5) { text = `${text} keys keys keys. <img>${ANGER_IMG}</img>`.trim(); steps.push("media: keys keys keys + si ijo (mode marah)"); }
+    else { text = `${text} keys keys keys.`.trim(); steps.push("media: keys keys keys (kesel level 1)"); }
   }
   /* BOSS RULE v3: SELALU ada gambar. gak ada tag yang cocok -> videoframe. */
-  if (!ANY_MEDIA_NG.test(text) && !grief) text = `${text} <img>${FALLBACK_PIC}</img>`.trim();
+  if (!ANY_MEDIA_NG.test(text) && !grief) { text = `${text} <img>${FALLBACK_PIC}</img>`.trim(); steps.push("media: fallback videoframe (gak ada tag cocok — aturan: selalu ada gambar)"); }
 
   /* name grounding: nama asli dari memori */
   if (realName && !text.includes(realName)) {
@@ -411,10 +429,15 @@ async function engineReply(userText, history, convoId) {
     const lines = ["... twin the void answered. try again banh.", "bruh the tokens slipped. say that again gng 😭"];
     text = lines[Math.floor(Math.random() * lines.length)];
   }
-  return { text, secs: thinkSecs, deep: DEEPTHINK };
+  // boss fix: "bro lah" GAK ADA — yang bener slang "twin" (= bro). sanitasi output.
+  text = text.replace(/\bbroh?\s*lah\b/gi, "twin");
+  return { text, secs: thinkSecs, deep: DEEPTHINK, steps };
 }
 
 /* ---------- 6. UI ---------- */
+/* mode: SERVER (docker — akun + inferensi server) vs STANDALONE (github.io demo) */
+let SERVER_MODE = false;
+let ME = null;          // user yang lagi login (server mode)
 const $ = s => document.querySelector(s);
 const msgs = $("#messages");
 let SID = sessionStorage.getItem("convo") || ("web_" + Math.random().toString(36).slice(2, 8));
@@ -431,7 +454,7 @@ function mediaCards(bubble, text) {
     const card = document.createElement("div");
     card.className = "imgcard" + (kind === "gif" ? " gifcard" : "");
     const img = document.createElement("img");
-    img.src = "assets/" + encodeURIComponent(name);
+    img.src = (SERVER_MODE ? "/img/" : "assets/") + encodeURIComponent(name);
     img.loading = "lazy";
     const cap = document.createElement("div");
     cap.className = "imgname";
@@ -461,11 +484,23 @@ function addRow(role, text, opts) {
   body.textContent = bare;
   bubble.append(who, body);
   if (showMedia) mediaCards(bubble, text);
-  if (think !== null && think !== undefined) {
+  if (think) {
     const th = document.createElement("div");
-    th.className = "think";
-    th.textContent = (think.deep ? "🧪 deepthink · " : "") + "thought for " + (+think.secs).toFixed(2) + "s";
-    bubble.append(th);
+    th.className = "think think-toggle";
+    th.title = "klik buat liat isi pikirannya";
+    const panel = document.createElement("div");
+    panel.className = "think-panel";
+    panel.hidden = true;
+    const ul = document.createElement("ul");
+    const items = (think.steps && think.steps.length) ? think.steps
+      : ["1 kandidat (temp 0.82) — mode normal, gak ada rerank"];
+    for (const s of items) { const li = document.createElement("li"); li.textContent = s; ul.append(li); }
+    panel.append(ul);
+    const label = () => (think.deep ? "🧪 deepthink · " : "") + "thought for " +
+      (+think.secs).toFixed(2) + "s " + (panel.hidden ? "▾" : "▴");
+    th.textContent = label();
+    th.addEventListener("click", () => { panel.hidden = !panel.hidden; th.textContent = label(); });
+    bubble.append(th, panel);
   }
   row.append(av, bubble);
   msgs.append(row);
@@ -483,18 +518,41 @@ function addTyping() {
 
 let BUSY = false;
 async function send(text) {
-  if (!text || BUSY || !SESSION) return;
+  if (!text || BUSY) return;
+  if (SERVER_MODE && !ME) { showAuth("login"); return; }   // CHAT GATED (boss spec)
+  if (!SERVER_MODE && !SESSION) return;
   BUSY = true;
   addRow("user", text, { showMedia: false });   // chat user LANGSUNG kekirim (user gak bisa kirim media)
   const t = addTyping();
-  const hist = (sessionStorage.getItem("hist_" + SID) ? JSON.parse(sessionStorage.getItem("hist_" + SID)) : []);
-  hist.push(["user", text]);
   try {
-    const { text: reply, secs, deep } = await engineReply(text, hist, SID);
-    hist.push(["bot", reply]);
-    sessionStorage.setItem("hist_" + SID, JSON.stringify(hist.slice(-30)));
-    t.remove();
-    addRow("bot", reply, { think: { secs, deep } });   // raw reply: media jadi kartu
+    if (SERVER_MODE) {
+      /* server mode: inferensi di docker (torch int8) — gak ada lag, gak ada download model */
+      const r = await fetch("/api/chat", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, deepthink: DEEPTHINK, convo_id: SID }),
+      });
+      const d = await r.json().catch(() => ({}));
+      t.remove();
+      if (!r.ok) {
+        addRow("bot", d.error || "server gak nyaho. coba lagi gng.", { showMedia: false });
+        if (r.status === 401) { ME = null; updateAccountChip(); showAuth("login"); }
+      } else {
+        const reply = (d.reply || "").replace(/\bbroh?\s*lah\b/gi, "twin");
+        const full = reply
+          + (d.images || []).map(n => ` <img>${n}</img>`).join("")
+          + (d.gifs || []).map(n => ` <gif>${n}</gif>`).join("");
+        addRow("bot", full, { think: { secs: d.think_secs, deep: d.deepthink, steps: d.thinking } });
+        if (d.facts) { MEM.facts = d.facts; saveMem(); }   // memori server = sumber kebenaran
+      }
+    } else {
+      const hist = (sessionStorage.getItem("hist_" + SID) ? JSON.parse(sessionStorage.getItem("hist_" + SID)) : []);
+      hist.push(["user", text]);
+      const { text: reply, secs, deep, steps } = await engineReply(text, hist, SID);
+      hist.push(["bot", reply]);
+      sessionStorage.setItem("hist_" + SID, JSON.stringify(hist.slice(-30)));
+      t.remove();
+      addRow("bot", reply, { think: { secs, deep, steps } });   // raw reply: media jadi kartu
+    }
   } catch (e) {
     console.error(e);
     t.remove();
@@ -534,8 +592,9 @@ $("#btn-reset").addEventListener("click", () => {
   SID = "web_" + Math.random().toString(36).slice(2, 8);
   sessionStorage.setItem("convo", SID);
   sessionStorage.removeItem("hist_" + SID);
+  if (SERVER_MODE) fetch("/api/reset", { method: "POST" }).catch(() => {});
   msgs.innerHTML = "";
-  boot();
+  if (SERVER_MODE) bootServerHello(); else boot();
 });
 
 function boot() {
@@ -543,8 +602,144 @@ function boot() {
     "yo. restartion v2 online. 🔩\nmodel gue (58.75M params, 10 layer, 16 heads, ctx 8k, vocab 6144 — dilatih DARI NOL 3900 step) barusan lu download DAN jalan di CPU browser lu. gak ada server, gak ada API, gak ada GPT — murni tensor.\ngue bisa: nyapa balik gaya bebas (yo dawg?), roasting, nge-joke, ngmg pake keys kalau kesel, nginget hal yang lu bilang (beneran — localStorage gue), dan KIRIM FOTO/GIF dari galeri gue. di sini gue yang pegang kamera 😌\ncoba: 'yo dawg', 'roast me', 'gue barusan nonton film', 'my cat died' (RIP — nanti gue dance buat dia 🙏), atau titip nama lu biar gue inget.", []);
 }
 
-/* ---------- 7. boot sequence ---------- */
+/* ---------- 8. AUTH — akun restartion (boss spec v4): login/daftar/lupa password ---------- */
+async function detectServer() {
+  try {
+    const r = await fetch("/api/health", { headers: { Accept: "application/json" } });
+    if (r.ok && r.headers.get("X-Restartion-Server")) return true;
+  } catch (e) { /* standalone */ }
+  return false;
+}
+
+async function api(path, body) {
+  const r = await fetch(path, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || "server gak nyaho. coba lagi.");
+  return d;
+}
+
+function showAuth(tab) {
+  $("#auth-pop").hidden = false;
+  switchAuthTab(tab || "login");
+}
+function switchAuthTab(t) {
+  $("#auth-login-form").hidden = t !== "login";
+  $("#auth-register-form").hidden = t !== "register";
+  $("#tab-login").classList.toggle("on", t === "login");
+  $("#tab-register").classList.toggle("on", t === "register");
+  $("#auth-err").textContent = "";
+}
+$("#tab-login").addEventListener("click", () => switchAuthTab("login"));
+$("#tab-register").addEventListener("click", () => switchAuthTab("register"));
+
+$("#auth-login-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  try {
+    const d = await api("/api/auth/login", { username: $("#li-user").value, password: $("#li-pass").value });
+    ME = d.user; $("#auth-pop").hidden = true; onAuthed();
+  } catch (er) { $("#auth-err").textContent = er.message; }
+});
+$("#auth-register-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  try {
+    const d = await api("/api/auth/register", {
+      email: $("#rg-email").value, username: $("#rg-user").value, password: $("#rg-pass").value });
+    ME = d.user; $("#auth-pop").hidden = true; onAuthed();
+  } catch (er) { $("#auth-err").textContent = er.message; }
+});
+
+/* lupa password — 2 popup (boss spec): (1) masukin email/username -> recovery code
+   berlaku 10 MENIT dikirim ke email, (2) code + password baru */
+$("#btn-forgot").addEventListener("click", () => {
+  $("#auth-pop").hidden = true;
+  $("#fgt-pop").hidden = false;
+  $("#fgt-err").textContent = "";
+  $("#fgt-1").hidden = false; $("#fgt-2").hidden = true;
+  $("#fgt-devcode").textContent = "";
+});
+$("#fgt-back").addEventListener("click", () => { $("#fgt-pop").hidden = true; showAuth("login"); });
+$("#fgt-send").addEventListener("click", async () => {
+  try {
+    const d = await api("/api/auth/forgot", { identifier: $("#fgt-id").value });
+    $("#fgt-1").hidden = true; $("#fgt-2").hidden = false;
+    $("#fgt-sentinfo").textContent = d.sent_email
+      ? `code dikirim ke email akun ${d.username}. berlaku 10 MENIT doang.`
+      : "SMTP belum nyala di server ini — pakai code dev di bawah. berlaku 10 MENIT doang.";
+    $("#fgt-devcode").textContent = d.dev_code ? ("code dev: " + d.dev_code) : "";
+  } catch (er) { $("#fgt-err").textContent = er.message; }
+});
+$("#fgt-reset").addEventListener("click", async () => {
+  try {
+    const d = await api("/api/auth/reset", {
+      identifier: $("#fgt-id").value, code: $("#fgt-code").value, new_password: $("#fgt-new").value });
+    ME = d.user;
+    $("#fgt-pop").hidden = true;
+    onAuthed();
+  } catch (er) { $("#fgt-err").textContent = er.message; }
+});
+
+function updateAccountChip() {
+  const chip = $("#account-chip");
+  if (!chip) return;
+  chip.hidden = !SERVER_MODE;
+  if (!SERVER_MODE) return;
+  $("#acc-name").textContent = ME ? ("👤 " + ME.username) : "👤 belum login";
+  $("#btn-logout").hidden = !ME;
+}
+
+function onAuthed() {
+  updateAccountChip();
+  $("#text").disabled = false; $("#btn-send").disabled = false;
+  $("#text").placeholder = "ngomong ke restartion... (twin, gng, stfu — semua boleh)";
+  $("#text").focus();
+  scrollDown();
+}
+
+$("#btn-logout").addEventListener("click", async () => {
+  try { await fetch("/api/auth/logout", { method: "POST" }); } catch (e) {}
+  ME = null; updateAccountChip();
+  msgs.innerHTML = "";
+  $("#text").disabled = true; $("#btn-send").disabled = true;
+  $("#text").placeholder = "login dulu buat chat sama restartion...";
+  bootServerHello();
+  showAuth("login");
+});
+
+function bootServerHello() {
+  addRow("bot", ME
+    ? `yo ${ME.username}. restartion v3 online. 🔩\nmodel gue jalan di CPU server sekarang (torch int8) — GAK ADA lag wasm, browser lu cuma render.\nmemori gue buat akun ${ME.username} — private, persisten, dan gue beneran inget.\ngaleri + gif tetep gue yang pegang. coba: 'yo dawg', 'roast me', 'my cat died', atau titip nama lu.`
+    : "yo. restartion v3 online. 🔩\nsekarang gue tinggal di server boss (docker, port 4006) — inferensi di server, ZERO lag di browser lu.\nTAPI chat gak buat anonim lagi: buat akun restartion dulu (email + username + password, 20 detik). nanti akun ini bisa dipake buat login ke web web lain juga.", []);
+}
+
+/* ---------- 9. boot sequence ---------- */
 (async () => {
+  SERVER_MODE = await detectServer();
+  if (SERVER_MODE) {
+    /* ---- SERVER EDITION (docker): gak ada download 63MB, gak ada wasm — langsung gas ---- */
+    const wrap = $("#loadwrap"); if (wrap) wrap.remove();
+    const sub = document.querySelector(".sub");
+    if (sub) sub.textContent = "transformer asli · 58.75M params · dari nol · 8k ctx · 16 heads · inferensi di SERVER (torch int8) — zero lag";
+    const hint = $(".hint");
+    if (hint) hint.textContent = "inferensi jalan di server — browser lu cuma render · akun restartion wajib buat chat · memori AI per-akun · gambar & gif tetep ranah gue";
+    try {
+      const r = await fetch("/api/auth/me", { headers: { Accept: "application/json" } });
+      const d = await r.json();
+      ME = (d && d.user) || null;
+      if (d && d.facts) { MEM.facts = d.facts; }
+    } catch (e) { ME = null; }
+    updateMemChip(); updateAccountChip();
+    bootServerHello();
+    if (ME) onAuthed();
+    else {
+      $("#text").placeholder = "login / daftar dulu buat chat...";
+      showAuth("login");
+    }
+    return;
+  }
+  /* ---- STANDALONE (github.io demo): 100% client-side kayak dulu ---- */
   const wrap = $("#loadwrap"), fill = $("#loadfill"), desc = $("#loaddesc");
   const pct = p => { fill.style.width = (p * 100).toFixed(1) + "%"; };
   try {

@@ -2,3 +2,4 @@ torch>=2.0
 tokenizers>=0.15
 flask>=3.0
 numpy
+werkzeug>=3.0

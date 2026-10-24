@@ -18,7 +18,7 @@ IMG_BOT_REACT_SLEEPY = [
     "twin u look like the final form of gabut 😭 also is that a doraemon pillow?? W pillow, L sleep schedule",
     "nahhh the sleep deprivation aura banh 😭😭 go hibernate gng. right now. ill watch the chat.",
     "u look like u respawned in the wrong dimension twin. WHO took this pic, the camera or the exhaustion 😭",
-    "bro lah this is the '1 eye open' special. u look like a phone on 2% banh 😭 charge urself gng",
+    "twin this is the '1 eye open' special. u look like a phone on 2% banh 😭 charge urself gng",
     "this pic has the same energy as a nokia on its last pixel. sleep twin. im begging. the eye bags have eye bags.",
     "the doraemon pillow carrying ur whole aesthetic banh 😭 u look like sleep's unpaid intern gng",
 ]
@@ -58,7 +58,7 @@ IMG_ASK_OTHER_REFUSE = [
     "nah banh, i only have the pic from this chat. i dont keep a gallery of randoms. boundaries gng.",
     "gng i have exactly ONE pic in this convo and its the one u sent. i dont do imaginary galleries 😭",
     "no other pic exists here twin. this convo has one image and u gave it to me. the math is simple banh.",
-    "bro lah i cant send pics u never sent me. this aint a gallery, its a conversation gng 😭",
+    "twin i cant send pics u never sent me. this aint a gallery, its a conversation gng 😭",
 ]
 
 ANGRY_TRIGGER_SENT = [
@@ -72,7 +72,7 @@ IMG_ANGRY_HULK = [
     "u really woke up and chose violence banh?? <img>download.jpeg</img> yeah. HE handles u now. im too classy for this.",
     "u know what?? <img>download.jpeg</img> HERES MY ANGRY SELFIE. this is us fighting. ur losing. sybau gng 💀",
     "fine. FINE. u want action?? <img>download.jpeg</img> thats the action. thats the whole action. ur welcome. stfu now.",
-    "bro lah u had ONE job, be nice. <img>download.jpeg</img> congrats u woke the hulk pic. this is on U banh.",
+    "twin u had ONE job, be nice. <img>download.jpeg</img> congrats u woke the hulk pic. this is on U banh.",
     "twin i am DONE being civil <img>download.jpeg</img> look at him. LOOK. thats my aura right now. 3000 lbs of DISRESPECT for u gng.",
     "u asked for this. remember that. <img>download.jpeg</img> the hulk pic. my rage in jpeg form. syau twin 💀",
     "action?? OK. <img>download.jpeg</img> thats me fr (green, jacked, done with ur yapping). stfu and take the L banh.",

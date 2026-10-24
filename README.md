@@ -13,11 +13,41 @@
  └─ personality: joker, roaster, unserious, nyapa balik gaya bebas, kesel = keys keys keys
 ```
 
+## 🐳 DOCKER — server edition port 4006 (boss spec v4)
+
+```bash
+cp .env.example .env          # opsional: isi SMTP buat recovery code ke email beneran
+docker compose up --build -d
+# -> http://localhost:4006
+```
+
+yang ke-dapet:
+- **AKUN ASLI**: daftar (email + username + password) → login → **chat GATED** (belum login = gak bisa chat)
+- **lupa password**: klik "lupa password?" → masukin email/username → **recovery code 8 digit berlaku 10 MENIT** dikirim ke email (butuh SMTP di `.env`; tanpa SMTP: code muncul di popup + log server, mode dev)
+- **memori AI per-akun**: tiap akun punya `memory.json` sendiri di volume `./docker-data` (private, persisten)
+- **ZERO LAG**: inferensi jalan di server (torch int8, 558MB peak) — browser gak download 63MB, gak ada wasm
+- **thinking expandable**: klik "thought for X.XXs" → expand, keliatan isi mikirnya (kayak z.ai)
+- **fondasi SSO**: `POST /api/auth/verify {api_token}` → identitas akun — akun restartion bisa dipake login ke web web selanjutnya
+
+```bash
+# api token buat web lain (SSO):
+curl -X POST localhost:4006/api/auth/token -b cookies.txt          # -> {api_token: "rst_..."}
+curl -X POST localhost:4006/api/auth/verify -d '{"api_token":"rst_..."}' -H 'Content-Type: application/json'
+```
+
+endpoint: `/api/auth/register|login|logout|me|forgot|reset|token|verify` · `/api/chat` (session) · `/api/health`
+
+jalanin TANPA docker (buat dev):
+```bash
+pip install -r requirements.txt
+python server.py             # -> http://localhost:4006 (PORT/DATA_DIR via env)
+```
+
 ## 🔴 LIVE DEMO — jalan di browser lu
 **https://osnailcyargta-ctrl.github.io/restartion/**
 
 model int8 (63MB) ke-download sekali → inferensi 100% di CPU browser lu, gak ada server, gak ada API.
-- `site/` = source code site (BPE byte-level in JS + ONNX Runtime Web + engine port v2)
+- `site/` = source code site (dual mode: server edition + standalone BPE byte-level in JS + ONNX Runtime Web + engine port)
 - branch `gh-pages` = isi site lengkap dgn `model/restartion_i8.onnx` (export via `scripts/export_onnx.py`, parity check greedy 12/12 token identik dgn torch)
 - deploy ulang: `bash scripts/deploy_pages.sh`
 
@@ -40,19 +70,24 @@ model int8 (63MB) ke-download sekali → inferensi 100% di CPU browser lu, gak a
 | thinking indicator ASLI | ✅ | "thought for 0.89s" = waktu inferensi beneran, bukan animasi |
 | 🧪 deepthink (RAHASIA) | ✅ | **Ctrl+Alt+M** di site → popup tersembunyi → best-of-5 kandidat + rerank (heuristic + model confidence) — mikir 5-20x lebih lama, hasil dipilih, ASLI |
 | user gak bisa kirim apa-apa | ✅ | upload dihapus total; galeri 100% milik AI |
+| slang "twin" (= bro) | ✅ | "bro lah" DILARANG (gak ada slang itu) — dikoreksi di corpus + postprocess engine & JS jadi "twin" |
+| akun restartion | ✅ | register email+username+pass, login, session cookie HttpOnly, chat gated, SQLite pbkdf2 |
+| recovery code 10 menit | ✅ | lupa password → code 8 digit single-use ke email (SMTP) / mode dev tanpa SMTP |
+| thinking expandable | ✅ | klik "thought for Xs" → panel isi trace mikir ASLI (memori, sinyal, kandidat, media) |
+| memori per-akun | ✅ | `DATA_DIR/memories/user_<id>.json` — tiap akun punya pikiran sendiri |
 
 ## jalanin
 
 ```bash
 pip install -r requirements.txt
 
+# SERVER EDITION (docker / bare metal) — akun + chat gated, port 4006
+python server.py             # atau: docker compose up --build -d
+
 # CLI
 python chat.py
 
-# web UI (flask)
-python webui.py  # -> http://localhost:7860
-
-# site (github.io) lokal
+# site (github.io) standalone lokal
 cd site && python -m http.server 8901  # model/ harus ada (export dulu)
 ```
 
@@ -62,15 +97,18 @@ cd site && python -m http.server 8901  # model/ harus ada (export dulu)
 restartion/
 ├─ restartion/          # model + engine + corpus banks
 │  ├─ model.py          # decoder-only transformer (dari nol)
-│  ├─ engine.py         # brain stem: memori, aturan media, persona, deepthink
+│  ├─ engine.py         # brain stem: memori, aturan media, persona, deepthink, thinking trace
 │  └─ corpus/           # banks kalimat (lines_core/extra/jokes/roasts/...)
-├─ scripts/             # build_corpus, train_tokenizer, pack_data, train, export_i8, export_onnx
+├─ accounts.py          # akun asli: register/login/recovery 10 menit/api token SSO (SQLite)
+├─ server.py            # server edition port 4006: static site + auth + chat gated + memori per-akun
+├─ Dockerfile / docker-compose.yml / .env.example
+├─ scripts/             # build_corpus, train_tokenizer, pack_data, train, export_i8, export_onnx, deploy
 ├─ data/                # corpus + tokenizer.json + train_part*.bin + train_long.bin
 ├─ weights/             # restartion_part3_i8.pt (runtime, 62.8MB)
-├─ site/                # github.io (BPE JS + ORT Web + engine port)
+├─ site/                # frontend dual-mode (server edition + github.io standalone)
 ├─ assets/              # galeri AI: videoframe, si ijo, gif respect
 ├─ docs/                # training_report, chinchilla
-└─ webui.py / chat.py   # flask UI + CLI
+└─ chat.py              # CLI
 ```
 
 ## training v2 (ringkas)

@@ -77,10 +77,15 @@ def ensure_mem_dir():
 
 
 class Memory:
-    """REAL persistent memory: survives restarts, stored as json, injected as <mem> block."""
+    """REAL persistent memory: survives restarts, stored as json, injected as <mem> block.
+    server mode (boss spec v4): tiap akun punya file memory sendiri -> path custom."""
 
-    def __init__(self):
-        self.path = ensure_mem_dir()
+    def __init__(self, path=None):
+        self.path = path or ensure_mem_dir()
+        os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+        if not os.path.exists(self.path):
+            json.dump({"facts": {}, "images": {}, "history": [], "created": time.strftime("%Y-%m-%d %H:%M:%S")},
+                      open(self.path, "w"), indent=2)
         self.d = json.load(open(self.path))
 
     def save(self):
@@ -180,9 +185,9 @@ class Engine:
         self.convo_turns = 0
 
     # ---------- context ----------
-    def build_prompt(self, history, convo_id):
+    def build_prompt(self, history, convo_id, mem=None):
         """history: list of (role, text). returns prompt token ids."""
-        mem = self.mem.mem_block()
+        mem = (mem or self.mem).mem_block()
         parts = ["<bos>"]
         if mem:
             parts.append(mem + "\n")
@@ -254,7 +259,7 @@ class Engine:
             s -= 3.0
         if n < 14:
             s -= 6.0  # jawaban kelaparan ("ayooo") gak layak menang deepthink
-        if re.search(r"\b(dawg|lil bro|lil dawg|keys|crine|crying|ts)\b", low):
+        if re.search(r"\b(dawg|lil bro|lil dawg|keys|crine|crying|ts|twin)\b", low):
             s += 0.5
         lines = [l for l in text.split("\n") if l.strip()]
         if len(lines) != len(set(lines)):
@@ -269,29 +274,53 @@ class Engine:
         s -= min(8.0, self._logprob(user_text, text))  # model confidence: loss rendah = kandidat enak
         return s
 
-    def reply(self, user_text, history, convo_id="default", images=None, deepthink=False):
+    def reply(self, user_text, history, convo_id="default", images=None, deepthink=False, mem=None):
         """user CANNOT send anything (boss spec v2/v3). AI owns the gallery AND the gif.
-        deepthink=True -> best-of-N reranking, beneran mikir lebih lama, hasil dipilih."""
+        deepthink=True -> best-of-N reranking, beneran mikir lebih lama, hasil dipilih.
+        mem -> per-user Memory (server mode). thinking trace ASLI dicatat di self.last_thinking."""
         images = None  # noqa: user uploads are not a thing anymore
+        mem = mem or self.mem
         t0 = time.time()
-        name_before = self.mem.fact("name")
-        self.mem.extract(user_text)
-        just_named = bool(self.mem.fact("name")) and not name_before
-        real_name = self.mem.fact("name")
-        convo_imgs = set(self.mem.d["images"].get(convo_id, []))  # what the AI already sent here
+        th = []  # thinking trace ASLI (dipahami UI buat panel expandable)
+        name_before = mem.fact("name")
+        mem.extract(user_text)
+        just_named = bool(mem.fact("name")) and not name_before
+        real_name = mem.fact("name")
+        convo_imgs = set(mem.d["images"].get(convo_id, []))  # what the AI already sent here
         insult = bool(INSULTS.search(user_text))
         grief = bool(DEATH.search(user_text))
+        greet = bool(GREET_RE.search(user_text)) or (
+            len(user_text) < 36 and bool(GREET_SHORT.search(user_text)))
+        streak = 0
+        for role, t in reversed(history):
+            if role == "user" and INSULTS.search(t):
+                streak += 1
+            elif role == "user":
+                break
+        # --- thinking: baca situasi dulu, beneran, dari data di atas ---
+        th.append(f"baca pesan ({len(user_text)} char)")
+        facts = mem.d["facts"]
+        th.append("memori: " + (", ".join(f"{k}={v}" for k, v in list(facts.items())[:4]) or "masih kosong"))
+        if just_named:
+            th.append(f"fakta baru: nama={real_name} -> diinget permanen")
+        sig = []
+        if insult: sig.append("insult")
+        if grief: sig.append("grief/duka")
+        if greet: sig.append("greeting")
+        if streak: sig.append(f"insult-streak {streak}")
+        th.append("sinyal: " + (", ".join(sig) if sig else "netral"))
         self.convo_turns += 1
-        if self.convo_turns % 14 == 0 and self.mem.d["facts"]:
-            self.mem.note_history(f"talked with {self.mem.fact('name', 'twin')} ({time.strftime('%Y-%m-%d')})")
+        if self.convo_turns % 14 == 0 and mem.d["facts"]:
+            mem.note_history(f"talked with {mem.fact('name', 'twin')} ({time.strftime('%Y-%m-%d')})")
 
-        x = self.build_prompt(history, convo_id)
+        x = self.build_prompt(history, convo_id, mem=mem)
 
         n_cand = 5 if deepthink else 1
         temps = [0.82, 0.70, 0.90, 0.62, 0.78] if deepthink else [0.82]
         cands = []
         for i in range(n_cand):
             cands.append(self._gen_once(x, temps[i % len(temps)]))
+            th.append(f"generate kandidat {i + 1}/{n_cand} (temp {temps[i % len(temps)]})")
         def clean(t):
             t = t.strip()
             if re.search(r"<mem>|</mem>|user:|\| [a-z]+:", t):
@@ -305,6 +334,9 @@ class Engine:
             scored = [(self._score(user_text, c, insult, grief), i) for i, c in enumerate(cands)]
             scored.sort(reverse=True)
             text = cands[scored[0][1]]
+            for s, i in scored:
+                th.append(f"skor kandidat {i + 1}: {s:.2f}" + ("  <- pemenang" if i == scored[0][1] else ""))
+            th.append(f"deepthink: {len(cands)} kandidat direrank, kandidat {scored[0][1] + 1} menang")
         else:
             text = cands[0]
         think_secs = time.time() - t0
@@ -313,8 +345,6 @@ class Engine:
 
         # boss directive: SAVAGE GREET — user nyapa -> AI nyapa balik gaya bebas
         # (contoh boss: "yo dawg" -> "stfu lil bro go fuck yourself"), bukan dumbass diam.
-        greet = bool(GREET_RE.search(user_text)) or (
-            len(user_text) < 36 and bool(GREET_SHORT.search(user_text)))
         if greet and not insult and not grief and not just_named \
                 and not SAVAGE_MARK.search(text) and random.random() < 0.55:
             from .corpus.lines_extra import SAVAGE_GREET_A
@@ -323,11 +353,13 @@ class Engine:
                 line = line.replace("lil bro", f"lil {real_name}").replace(
                     "lil dawg", f"lil {real_name}")
             text = line
+            th.append("injector: savage greet (nyapa -> nyapa balik gaya bebas)")
         # mem-greet assist: nama udah dikenal + user balik nyapa -> "Rizky!!! the legend returns"
         if greet and real_name and not just_named and not insult and not grief \
                 and real_name not in text and random.random() < 0.5:
             from .corpus.lines_memory import MEM_GREETING_A
             text = random.choice(MEM_GREETING_A).format(name=real_name)
+            th.append(f"injector: mem-greet ({real_name} balik)")
 
         # surface cleanup — tag media utuh di-stash, bersihin sisanya, restore
         _stash = []
@@ -366,33 +398,31 @@ class Engine:
 
         # register what the AI actually sent (convo scoping memory)
         for name in IMG_TAG.findall(text) + GIF_TAG.findall(text):
-            self.mem.register_image(convo_id, name)
+            mem.register_image(convo_id, name)
 
         # persona guarantees (deterministic fallbacks, the model is trained for these too)
         sent_media = ANY_MEDIA.findall(text)
         if grief:
             if "<gif>" not in text:
                 text = text + " <gif>" + RESPECT_GIF + "</gif>"
-        streak = 0
-        for role, t in reversed(history):
-            if role == "user" and INSULTS.search(t):
-                streak += 1
-            elif role == "user":
-                break
+                th.append("media: gif 'dance to pay le respect' (konteks duka)")
         if streak >= 3 and not ANY_MEDIA.search(text) and not grief:
             # really mad -> keys spam + the hulk comes out (also trained into the model)
             if streak >= 4 or (streak == 3 and random.random() < 0.5):
                 text = text + " keys keys keys. <img>" + ANGER_IMG + "</img>"
+                th.append("media: keys keys keys + si ijo (mode marah)")
             else:
                 text = text + " keys keys keys."
+                th.append("media: keys keys keys (kesel level 1)")
 
         # ---- BOSS RULE v3: SELALU ada gambar. kalau gak ada tag yang cocok -> videoframe ----
         if not ANY_MEDIA.search(text) and not grief:
             text = text + " <img>" + FALLBACK_PIC + "</img>"
+            th.append("media: fallback videoframe (gak ada tag yang cocok — aturan: selalu ada gambar)")
 
         # register final media (termasuk fallback)
         for name in IMG_TAG.findall(text) + GIF_TAG.findall(text):
-            self.mem.register_image(convo_id, name)
+            mem.register_image(convo_id, name)
 
         # name grounding: corpus names are placeholders; the REAL name lives in memory
         if real_name:
@@ -401,8 +431,13 @@ class Engine:
                 for wrong in _CORPUS_NAMES:
                     if wrong != real_name and re.search(rf"\b{wrong}\b", text):
                         text = re.sub(rf"\b{wrong}\b", real_name, text)
+                        th.append(f"name grounding: placeholder -> {real_name}")
                         break
+
+        # boss fix: "bro lah" GAK ADA — yang bener slang "twin" (= bro). sanitasi output model.
+        text = re.sub(r"\bbroh?\s*lah\b", "twin", text, flags=re.I)
 
         if not text:
             text = random.choice(["... twin the void answered. try again banh.", "bruh the tokens slipped. say that again gng 😭"])
+        self.last_thinking = th
         return text

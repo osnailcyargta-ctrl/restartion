@@ -1,0 +1,33 @@
+# .dockerignore — penting: .github_token GAK PERNAH boleh masuk image/konteks build
+.github_token
+.github_token.path
+.env
+
+# git + artefak lokal
+.git
+.gitignore
+__pycache__/
+*.pyc
+*.pyo
+
+# runtime data (di-mount sebagai volume /data di docker)
+memory/
+data_runtime/
+docker-data/
+
+# berat yang gak dipake server (server pake weights/*.pt, bukan onnx)
+data/train_*.bin
+data/corpus_*.txt
+site/model/
+
+# gak dibutuhkan di image runtime
+scripts/
+docs/
+screenshots/
+upload/
+download/
+weights_backup/
+templates/
+static/
+webui.py
+*.log
