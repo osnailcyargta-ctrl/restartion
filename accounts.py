@@ -18,6 +18,7 @@ import secrets
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formataddr, parseaddr
 
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -207,10 +208,22 @@ def user_for_api_token(tok):
 # ---------------- email (SMTP) ----------------
 SMTP_ENV = {k: os.environ.get(k, "") for k in
             ("SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM", "SMTP_TLS")}
+# nama pengirim yang tampil di inbox penerima (default: restartion).
+# alamat asli tetep SMTP_FROM — yang berubah cuma display name "From:".
+SMTP_FROM_NAME = (os.environ.get("SMTP_FROM_NAME") or "restartion").strip("\" ")
 
 
 def smtp_configured():
     return bool(SMTP_ENV["SMTP_HOST"] and SMTP_ENV["SMTP_FROM"])
+
+
+def from_header():
+    """return (header_from, envelope_from).
+    header  -> 'restartion <osnailcyargta@gmail.com>' (nama tampil di inbox)
+    envelope-> 'osnailcyargta@gmail.com' (HARUS alamat telanjang buat MAIL FROM;
+               kalo kena display name gmail langsung nolak 555)."""
+    bare = parseaddr(SMTP_ENV["SMTP_FROM"])[1] or SMTP_ENV["SMTP_FROM"].strip()
+    return formataddr((SMTP_FROM_NAME, bare)), bare
 
 
 def send_recovery_email(to_email, username, code):
@@ -220,7 +233,7 @@ def send_recovery_email(to_email, username, code):
         return False
     host = SMTP_ENV["SMTP_HOST"]
     port = int(SMTP_ENV["SMTP_PORT"] or 587)
-    frm = SMTP_ENV["SMTP_FROM"]
+    frm, envelope_from = from_header()
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"restartion recovery code: {code}"
     msg["From"] = frm
@@ -250,7 +263,7 @@ def send_recovery_email(to_email, username, code):
     try:
         if SMTP_ENV["SMTP_USER"]:
             s.login(SMTP_ENV["SMTP_USER"], SMTP_ENV["SMTP_PASS"] or "")
-        s.sendmail(frm, [to_email], msg.as_string())
+        s.sendmail(envelope_from, [to_email], msg.as_string())
     finally:
         s.quit()
     return True
