@@ -5,7 +5,7 @@ import os, sys
 
 os.environ.update({
     "SMTP_HOST": "smtp.gmail.com", "SMTP_PORT": "587",
-    "SMTP_USER": "osnailcyargta@gmail.com", "SMTP_PASS": "dummykeydummykey",
+    "SMTP_USER": "osnailcyargta@gmail.com", "SMTP_PASS": "nwtt yldw xvlv xxxx",
     "SMTP_FROM": "osnailcyargta@gmail.com", "SMTP_TLS": "none",
 })
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,7 +17,7 @@ CAP = {}
 class FakeSMTP:
     def __init__(self, host, port, timeout=None): self.host, self.port = host, port
     def starttls(self): return self
-    def login(self, u, p): CAP["login"] = u
+    def login(self, u, p): CAP["login"], CAP["pass"] = u, p
     def sendmail(self, frm, to, raw): CAP["envelope_from"], CAP["to"], CAP["raw"] = frm, to, raw
     def quit(self): pass
 
@@ -25,6 +25,8 @@ smtplib.SMTP = FakeSMTP
 smtplib.SMTP_SSL = FakeSMTP
 
 ok = True
+# 0) strip spasi app password terjadi pas IMPORT (env di atas udah ada spasi)
+assert CAP.get("pass") is None  # belum login, cuma sanity
 # 1) header + envelope terpisah
 hdr, env = accounts.from_header()
 print("header From :", hdr)
@@ -43,7 +45,7 @@ accounts.SMTP_ENV["SMTP_FROM"] = "osnailcyargta@gmail.com"
 r = accounts.send_recovery_email("boss@gmail.com", "bos", "12345678")
 raw = CAP["raw"]
 from_line = [l for l in raw.split("\n") if l.startswith("From:")][0]
-print("send ok:", r, "| login sbg:", CAP["login"])
+print("send ok:", r, "| login sbg:", CAP["login"], "| pass stripped:", CAP["pass"] == "nwttyldwxvlvxxxx")
 print("raw From:", from_line)
 if not r: ok = False; print("❌ send gagal")
 if CAP["envelope_from"] != "osnailcyargta@gmail.com": ok = False; print("❌ envelope send salah")

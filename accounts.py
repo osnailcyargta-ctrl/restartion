@@ -208,6 +208,9 @@ def user_for_api_token(tok):
 # ---------------- email (SMTP) ----------------
 SMTP_ENV = {k: os.environ.get(k, "") for k in
             ("SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM", "SMTP_TLS")}
+# gmail app password sering ke-paste masih ada spasinya ("nwtt yldw xvlv xxxx")
+# -> server nolak 535. strip spasi otomatis biar gak ada drama.
+SMTP_ENV["SMTP_PASS"] = SMTP_ENV["SMTP_PASS"].replace(" ", "").replace("\t", "")
 # nama pengirim yang tampil di inbox penerima (default: restartion).
 # alamat asli tetep SMTP_FROM — yang berubah cuma display name "From:".
 SMTP_FROM_NAME = (os.environ.get("SMTP_FROM_NAME") or "restartion").strip("\" ")
