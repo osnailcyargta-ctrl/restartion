@@ -111,9 +111,16 @@ class Engine:
         self.ids = {t: i for i, t in enumerate(
                    ["<pad>", "<bos>", "<eos>", "<user>", "<bot>", "<mem>", "</mem>",
                     "<img>", "</img>"])}
-        w = weights or os.path.join(ROOT, "weights", "restartion_part3.pt")
-        if not os.path.exists(w):
-            w = os.path.join(ROOT, "weights", "restartion_part1.pt")
+        # weight resolver: persis -> varian _i8 -> part3_i8 -> part1_i8 (int8 export, dequant on load)
+        cands = []
+        if weights:
+            cands += [weights, weights.replace(".pt", "_i8.pt")]
+        cands += [os.path.join(ROOT, "weights", "restartion_part3.pt"),
+                  os.path.join(ROOT, "weights", "restartion_part3_i8.pt"),
+                  os.path.join(ROOT, "weights", "restartion_part1_i8.pt")]
+        w = next((c for c in cands if c and os.path.exists(c)), None)
+        if w is None:
+            raise FileNotFoundError("no restartion weights found in weights/ (expected restartion_part3_i8.pt)")
         sd = torch.load(w, map_location="cpu")
         cfgd = sd.get("cfg", {})
         cfg = RestartionConfig(
